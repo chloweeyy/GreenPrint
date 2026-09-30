@@ -1,0 +1,315 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import pg from "pg";
+
+const { Pool } = pg;
+const JSON_HEADERS = {
+  "Content-Type": "application/json; charset=utf-8",
+  "Cache-Control": "no-store",
+  "X-Content-Type-Options": "nosniff"
+};
+const ATTEMPT_LIMIT = 5;
+const LOCKOUT_MS = 60_000;
+const attemptsByClient = new Map();
+let pool;
+
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+}
+
+function databasePool() {
+  if (pool) return pool;
+  pool = new Pool({
+    host: process.env.GREENPRINT_DB_HOST,
+    port: Number(process.env.GREENPRINT_DB_PORT || 5432),
+    database: process.env.GREENPRINT_DB_NAME || "postgres",
+    user: process.env.GREENPRINT_DB_USER,
+    password: process.env.GREENPRINT_DB_PASSWORD,
+    ssl: { rejectUnauthorized: true },
+    max: 2,
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 10_000
+  });
+  return pool;
+}
+
+function clientKey(request) {
+  return request.headers.get("x-nf-client-connection-ip")
+    || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || "unknown";
+}
+
+function checkPin(request, pin) {
+  const key = clientKey(request);
+  const now = Date.now();
+  const state = attemptsByClient.get(key);
+  if (state?.lockedUntil > now) return { ok: false, locked: true };
+  const expected = process.env.GREENPRINT_CHECKOUT_PIN || "";
+  const actualBytes = Buffer.from(String(pin));
+  const expectedBytes = Buffer.from(expected);
+  const matches = /^\d{4,8}$/.test(expected)
+    && /^\d{4,8}$/.test(String(pin))
+    && actualBytes.length === expectedBytes.length
+    && timingSafeEqual(actualBytes, expectedBytes);
+  if (matches) {
+    attemptsByClient.delete(key);
+    return { ok: true, key };
+  }
+  const failures = (state?.failures || 0) + 1;
+  attemptsByClient.set(key, {
+    failures: failures >= ATTEMPT_LIMIT ? 0 : failures,
+    lockedUntil: failures >= ATTEMPT_LIMIT ? now + LOCKOUT_MS : 0
+  });
+  return { ok: false, locked: failures >= ATTEMPT_LIMIT };
+}
+
+function quoteIdentifier(name) {
+  if (!/^[a-z_][a-z0-9_]*$/i.test(name)) throw new Error("Unexpected database column.");
+  return `"${name}"`;
+}
+
+function tableColumns(rows) {
+  const tables = new Map();
+  for (const row of rows) {
+    if (!tables.has(row.table_name)) tables.set(row.table_name, new Map());
+    tables.get(row.table_name).set(row.column_name, row);
+  }
+  return tables;
+}
+
+function has(tables, table, column) {
+  return Boolean(tables.get(table)?.has(column));
+}
+
+function firstColumn(tables, table, candidates) {
+  return candidates.find((candidate) => has(tables, table, candidate)) || null;
+}
+
+function amountToCents(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return Math.round(amount * 100);
+}
+
+function transactionReference() {
+  const timeZone = process.env.GREENPRINT_TIMEZONE || "Asia/Manila";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(new Date()).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return `KGG-${parts.year}${parts.month}${parts.day}-${parts.hour}${parts.minute}${parts.second}-${randomBytes(3).toString("hex").toUpperCase()}`;
+}
+
+async function inspectSchema(client) {
+  const result = await client.query(
+    `SELECT table_name, column_name, is_nullable, column_default
+       FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = ANY($1::text[])`,
+    [["products", "transactions", "transaction_items", "admin_users", "inventory_logs", "admin_logs"]]
+  );
+  return tableColumns(result.rows);
+}
+
+async function insertRow(client, table, values, returning = null) {
+  const names = Object.keys(values);
+  const columns = names.map(quoteIdentifier).join(", ");
+  const params = names.map((_, index) => `$${index + 1}`).join(", ");
+  const returnSql = returning ? ` RETURNING ${quoteIdentifier(returning)}` : "";
+  return client.query(
+    `INSERT INTO ${quoteIdentifier(table)} (${columns}) VALUES (${params})${returnSql}`,
+    names.map((name) => values[name])
+  );
+}
+
+function checkoutError(message, status = 422) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+export default async function processCheckout(request) {
+  if (request.method !== "POST") {
+    return json({ status: "error", message: "Use POST." }, 405);
+  }
+
+  const missingConfig = [
+    "GREENPRINT_DB_HOST",
+    "GREENPRINT_DB_USER",
+    "GREENPRINT_DB_PASSWORD",
+    "GREENPRINT_CHECKOUT_PIN"
+  ].filter((name) => !process.env[name]);
+  if (missingConfig.length) {
+    return json({ status: "error", message: "Checkout is not configured on the server. Please ask staff for help." }, 503);
+  }
+
+  let payload;
+  try {
+    const raw = await request.text();
+    if (raw.length > 20_000) return json({ status: "error", message: "The cart is too large." }, 413);
+    payload = JSON.parse(raw);
+  } catch {
+    return json({ status: "error", message: "Request body must be valid JSON." }, 400);
+  }
+
+  const pin = String(payload?.pin ?? "");
+  const cart = payload?.cart;
+  if (!/^\d{4,8}$/.test(pin) || !Array.isArray(cart) || cart.length < 1 || cart.length > 100) {
+    return json({ status: "error", message: "Enter a valid authorization PIN and cart." }, 400);
+  }
+
+  const pinResult = checkPin(request, pin);
+  if (!pinResult.ok) {
+    return json({
+      status: "error",
+      message: pinResult.locked ? "Too many PIN attempts. Wait one minute and try again." : "Incorrect checkout PIN."
+    }, pinResult.locked ? 429 : 401);
+  }
+
+  const quantities = new Map();
+  for (const line of cart) {
+    const id = Number(line?.product_id);
+    const quantity = Number(line?.quantity);
+    if (!Number.isSafeInteger(id) || id < 1 || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) {
+      return json({ status: "error", message: "The cart contains an invalid product or quantity." }, 400);
+    }
+    const combined = (quantities.get(id) || 0) + quantity;
+    if (combined > 999) return json({ status: "error", message: "The cart contains an invalid quantity." }, 400);
+    quantities.set(id, combined);
+  }
+
+  const db = databasePool();
+  const client = await db.connect().catch((error) => {
+    console.error("GreenPrint checkout database connection failed.", error.code || "database error");
+    return null;
+  });
+  if (!client) return json({ status: "error", message: "Checkout could not connect to the store database. No stock was changed." }, 503);
+
+  let inTransaction = false;
+  try {
+    const schema = await inspectSchema(client);
+    const transactionIdColumn = firstColumn(schema, "transactions", ["id", "transaction_id"]);
+    const adminIdColumn = firstColumn(schema, "admin_users", ["id", "admin_id"]);
+    const transactionTimeColumn = firstColumn(schema, "transactions", ["created_at", "transaction_date", "timestamp"]);
+    const required = [
+      ["products", "id"], ["products", "name"], ["products", "price"], ["products", "stock"], ["products", "is_active"],
+      ["transactions", "transaction_ref"], ["transactions", "total_amount"], ["transactions", "subtotal"],
+      ["transaction_items", "transaction_id"], ["transaction_items", "product_id"], ["transaction_items", "product_name"],
+      ["transaction_items", "quantity"], ["transaction_items", "unit_price"], ["transaction_items", "line_total"]
+    ];
+    const missing = required.filter(([table, column]) => !has(schema, table, column));
+    if (!transactionIdColumn) missing.push(["transactions", "id or transaction_id"]);
+    if (missing.length) throw checkoutError("Checkout database tables are missing required columns. Please ask an administrator to check the database setup.", 503);
+
+    await client.query("BEGIN");
+    inTransaction = true;
+
+    let adminId = null;
+    if (adminIdColumn && has(schema, "admin_users", "is_active")) {
+      const adminResult = await client.query(
+        `SELECT ${quoteIdentifier(adminIdColumn)} AS admin_id FROM admin_users WHERE is_active IS TRUE ORDER BY ${quoteIdentifier(adminIdColumn)} LIMIT 1`
+      );
+      adminId = adminResult.rows[0]?.admin_id ?? null;
+    }
+
+    const lockedProducts = [];
+    let subtotalCents = 0;
+    for (const [productId, quantity] of quantities) {
+      const productResult = await client.query(
+        "SELECT id, name, price, stock, is_active FROM products WHERE id = $1 FOR UPDATE",
+        [productId]
+      );
+      const product = productResult.rows[0];
+      if (!product || product.is_active !== true) throw checkoutError("A cart item is no longer available. Refresh the products and try again.");
+      if (Number(product.stock) < quantity) throw checkoutError(`${product.name} does not have enough stock for this order.`);
+      const unitPriceCents = amountToCents(product.price);
+      if (unitPriceCents === null) throw checkoutError("A cart item has an invalid price. Please ask staff for help.", 503);
+      const lineTotalCents = unitPriceCents * quantity;
+      subtotalCents += lineTotalCents;
+      lockedProducts.push({ ...product, quantity, unitPriceCents, lineTotalCents });
+    }
+
+    const subtotal = (subtotalCents / 100).toFixed(2);
+    const reference = transactionReference();
+    const transactionValues = {
+      transaction_ref: reference,
+      total_amount: subtotal,
+      subtotal
+    };
+    if (transactionTimeColumn) transactionValues[transactionTimeColumn] = new Date();
+    if (has(schema, "transactions", "discount_amount")) transactionValues.discount_amount = "0.00";
+    if (has(schema, "transactions", "admin_id") && adminId !== null) transactionValues.admin_id = adminId;
+    if (has(schema, "transactions", "payment_method")) transactionValues.payment_method = "Cash";
+
+    const transactionResult = await insertRow(client, "transactions", transactionValues, transactionIdColumn);
+    const transactionId = transactionResult.rows[0]?.[transactionIdColumn];
+    const timestamp = transactionTimeColumn
+      ? (await client.query(`SELECT ${quoteIdentifier(transactionTimeColumn)} AS timestamp FROM transactions WHERE ${quoteIdentifier(transactionIdColumn)} = $1`, [transactionId])).rows[0]?.timestamp
+      : new Date().toISOString();
+
+    for (const product of lockedProducts) {
+      await insertRow(client, "transaction_items", {
+        transaction_id: transactionId,
+        product_id: product.id,
+        product_name: product.name,
+        quantity: product.quantity,
+        unit_price: (product.unitPriceCents / 100).toFixed(2),
+        line_total: (product.lineTotalCents / 100).toFixed(2)
+      });
+
+      const updatedAtSql = has(schema, "products", "updated_at") ? ", updated_at = NOW()" : "";
+      const stockUpdate = await client.query(
+        `UPDATE products SET stock = stock - $1${updatedAtSql} WHERE id = $2 AND stock >= $1`,
+        [product.quantity, product.id]
+      );
+      if (stockUpdate.rowCount !== 1) throw checkoutError(`${product.name} no longer has enough stock. Please try again.`);
+
+      if (["product_id", "change_amount", "reason"].every((column) => has(schema, "inventory_logs", column))) {
+        const inventoryLog = { product_id: product.id, change_amount: -product.quantity, reason: `Sale ${reference}` };
+        if (has(schema, "inventory_logs", "created_at")) inventoryLog.created_at = new Date();
+        await insertRow(client, "inventory_logs", inventoryLog);
+      }
+    }
+
+    if (adminId !== null && ["admin_id", "action", "details"].every((column) => has(schema, "admin_logs", column))) {
+      await insertRow(client, "admin_logs", {
+        admin_id: adminId,
+        action: "checkout",
+        details: JSON.stringify({ transaction_ref: reference, transaction_id: String(transactionId), item_count: lockedProducts.length, total: subtotal })
+      });
+    }
+
+    await client.query("COMMIT");
+    inTransaction = false;
+    attemptsByClient.delete(pinResult.key);
+    return json({
+      status: "success",
+      transaction_ref: reference,
+      transaction_id: transactionId,
+      timestamp: timestamp || new Date().toISOString(),
+      subtotal: Number(subtotal),
+      total_amount: Number(subtotal),
+      items: lockedProducts.map((product) => ({
+        product_name: product.name,
+        quantity: product.quantity,
+        unit_price: product.unitPriceCents / 100,
+        line_total: product.lineTotalCents / 100
+      }))
+    });
+  } catch (error) {
+    if (inTransaction) await client.query("ROLLBACK").catch(() => {});
+    if (error.status) return json({ status: "error", message: error.message }, error.status);
+    console.error("GreenPrint checkout database operation failed.", error.code || "database error");
+    return json({ status: "error", message: "Checkout could not be completed. No stock was changed." }, 500);
+  } finally {
+    client.release();
+  }
+}

@@ -470,12 +470,21 @@ html, body {
     document.getElementById('confirmSaleBtn').disabled = true;
     document.getElementById('checkoutPinError').classList.add('hidden');
     try {
-      const response = await fetch('process_checkout.php', {
+      const localHosts = ['localhost', '127.0.0.1', '::1'];
+      const isLocalXampp = localHosts.includes(window.location.hostname) || window.location.hostname.endsWith('.localhost');
+      const checkoutEndpoint = isLocalXampp ? 'process_checkout.php' : '/.netlify/functions/process-checkout';
+      const response = await fetch(checkoutEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ pin, cart: cart.map(item => ({ product_id: item.id, quantity: item.quantity })) })
       });
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Checkout service returned an invalid response (HTTP ${response.status}). Please ask staff for help.`);
+      }
       if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Checkout failed.');
       document.getElementById('receiptDate').innerText = new Date(result.timestamp).toLocaleString();
       document.getElementById('receiptRef').innerText = 'REF: ' + result.transaction_ref;
