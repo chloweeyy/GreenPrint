@@ -85,14 +85,20 @@
   }
   .canvas-item:hover .delete-btn { opacity: 1; }
 
-  @media (max-width: 850px) {
+  @media (max-width: 1024px) {
     html, body { height: auto !important; min-height: 100vh; overflow-y: auto !important; overflow-x: hidden !important; }
     header { padding: 12px 16px !important; }
     main { flex-direction: column !important; overflow-y: visible !important; height: auto !important; padding: 16px !important; }
-    #left-panel { height: 550px !important; flex: none !important; }
+    #left-panel { height: min(72vh, 720px) !important; min-height: 580px !important; flex: none !important; }
     #right-panel { width: 100% !important; height: 600px !important; flex: none !important; margin-bottom: 20px !important; }
   }
+  @media (max-width: 560px) {
+    #left-panel { min-height: 500px !important; height: 68vh !important; padding: 12px !important; }
+    #right-panel { padding: 14px !important; }
+    .template-card { min-width: 106px; height: 72px; }
+  }
 </style>
+<link rel="stylesheet" href="kiosk-touch.css?v=20261001-tablet">
 </head>
 <body class="font-body-md text-on-background h-screen flex flex-col overflow-hidden">
 
@@ -191,12 +197,9 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app_config.php"></script>
+<script src="runtime-config.js?v=20261001-netlify-catalog"></script>
 <script>
-  const browserConfig = window.GREENPRINT_CONFIG || {};
-  const _supabase = window.supabase && browserConfig.supabaseUrl && browserConfig.supabaseAnonKey
-    ? window.supabase.createClient(browserConfig.supabaseUrl, browserConfig.supabaseAnonKey)
-    : null;
+  let _supabase = null;
   let PRODUCTS = [];
   let activeCategory = 'all';
   let currentThemeName = ""; 
@@ -208,13 +211,19 @@
 
   async function loadInventory() {
     try {
+      const browserConfig = await (window.GREENPRINT_CONFIG_READY || Promise.resolve(window.GREENPRINT_CONFIG || {}));
+      if (!_supabase && window.supabase && browserConfig.supabaseUrl && browserConfig.supabaseAnonKey) {
+        _supabase = window.supabase.createClient(browserConfig.supabaseUrl, browserConfig.supabaseAnonKey);
+      }
       let products = null;
       if (_supabase) {
         const { data, error } = await _supabase.from('products').select('id, name, category, stock, is_active, image_url').eq('is_active', true).gt('stock', 0).order('name');
         if (!error) products = data || [];
-        else console.warn('Supabase catalog read failed; trying the PHP catalog endpoint.', error.message);
+        else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') console.warn('Supabase catalog read failed; trying the local PHP catalog endpoint.', error.message);
+        else throw new Error('Supabase catalog read failed. Check the public catalog SELECT policy and Netlify environment settings.');
       }
       if (products === null) {
+        if (!(location.hostname === 'localhost' || location.hostname === '127.0.0.1')) throw new Error('Supabase configuration is missing. Add SUPABASE_URL and SUPABASE_ANON_KEY to Netlify, then redeploy.');
         const response = await fetch('get_products.php', { headers: { Accept: 'application/json' } });
         const result = await response.json();
         if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Inventory unavailable.');
@@ -224,7 +233,8 @@
       renderInventory(PRODUCTS);
     } catch (err) {
       console.error('Could not load visualizer inventory:', err);
-      document.getElementById('inventoryList').innerHTML = '<p class="text-center text-sm text-on-surface-variant mt-10">Inventory is unavailable. Please try again.</p>';
+      const message = 'Inventory is unavailable. Please ask staff for help.';
+      document.getElementById('inventoryList').innerHTML = '<p class="text-center text-sm text-on-surface-variant mt-10">' + escapeHtml(message) + '</p>';
     }
   }
 

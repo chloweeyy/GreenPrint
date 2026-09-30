@@ -34,7 +34,7 @@ html, body {
   .no-print { display: none !important; }
 }
 
-@media (max-width: 850px) {
+@media (max-width: 1024px) {
   html, body { height: auto !important; overflow-y: auto !important; overflow-x: hidden !important; }
   header { flex-direction: column !important; align-items: center !important; text-align: center !important; gap: 14px !important; padding: 16px 20px !important; height: auto !important; }
   .brand { flex-direction: column !important; align-items: center !important; gap: 6px !important; }
@@ -43,7 +43,15 @@ html, body {
   #posProductGridContainer { overflow-y: visible !important; max-height: none !important; flex: none !important; }
   .cart-sidebar { width: 100% !important; height: auto !important; border-left: none !important; border-top: 2px solid var(--card-border) !important; }
 }
+@media (max-width: 560px) {
+  header { padding-left: 12px !important; padding-right: 12px !important; }
+  main > div:first-child { padding: 14px !important; }
+  #posProductGridContainer { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px !important; }
+  #posProductGridContainer [data-id] { height: 132px !important; padding: 10px !important; }
+  .cart-sidebar > div:last-child { padding: 14px !important; }
+}
 </style>
+<link rel="stylesheet" href="kiosk-touch.css?v=20261001-tablet">
 </head>
 <body class="bg-background font-body-md text-on-background flex flex-col h-screen overflow-hidden">
 <form aria-hidden="true" class="autofill-decoy" autocomplete="on" tabindex="-1"><input type="text" name="name" autocomplete="name" tabindex="-1"><input type="email" name="email" autocomplete="email" tabindex="-1"></form>
@@ -185,12 +193,9 @@ html, body {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app_config.php"></script>
+<script src="runtime-config.js?v=20261001-netlify-catalog"></script>
 <script>
-  const browserConfig = window.GREENPRINT_CONFIG || {};
-  const _supabase = window.supabase && browserConfig.supabaseUrl && browserConfig.supabaseAnonKey
-    ? window.supabase.createClient(browserConfig.supabaseUrl, browserConfig.supabaseAnonKey)
-    : null;
+  let _supabase = null;
   function escapeHtml(str) {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
@@ -213,13 +218,19 @@ html, body {
 
   async function loadProductsFromBackend() {
     try {
+      const browserConfig = await (window.GREENPRINT_CONFIG_READY || Promise.resolve(window.GREENPRINT_CONFIG || {}));
+      if (!_supabase && window.supabase && browserConfig.supabaseUrl && browserConfig.supabaseAnonKey) {
+        _supabase = window.supabase.createClient(browserConfig.supabaseUrl, browserConfig.supabaseAnonKey);
+      }
       let rows = null;
       if (_supabase) {
         const { data, error } = await _supabase.from('products').select('id, name, category, price, stock, is_active, image_url').eq('is_active', true).gt('stock', 0).order('id');
         if (!error) rows = data || [];
-        else console.warn('Supabase catalog read failed; trying the PHP catalog endpoint.', error.message);
+        else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') console.warn('Supabase catalog read failed; trying the local PHP catalog endpoint.', error.message);
+        else throw new Error('Supabase catalog read failed. Check the public catalog SELECT policy and Netlify environment settings.');
       }
       if (rows === null) {
+        if (!(location.hostname === 'localhost' || location.hostname === '127.0.0.1')) throw new Error('Supabase configuration is missing. Add SUPABASE_URL and SUPABASE_ANON_KEY to Netlify, then redeploy.');
         const response = await fetch('get_products.php', { headers: { Accept: 'application/json' } });
         const result = await response.json();
         if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Inventory could not be loaded.');
@@ -235,7 +246,7 @@ html, body {
     } catch (err) {
       console.error('Failed to load products:', err);
       const count = document.getElementById('posItemCount');
-      if (count) count.textContent = 'Inventory unavailable';
+      if (count) count.textContent = 'Inventory unavailable — please ask staff for help';
     }
   }
 

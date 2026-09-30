@@ -1,0 +1,18 @@
+html { -webkit-text-size-adjust: 100%; }
+body { overscroll-behavior-y: contain; }
+button, [role="button"] { touch-action: manipulation; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+:focus-visible { outline: 3px solid #78a98b; outline-offset: 2px; }
+
+@media (pointer: coarse) {
+  button:not(.object-remove):not(.delete-btn), [role="button"] { min-width: 44px; min-height: 44px; }
+  input:not([type="checkbox"]):not([type="radio"]), select { min-height: 48px; }
+  #posProductGridContainer button[data-id] { min-height: 112px; }
+  #inventoryList button[data-product-id] { min-height: 58px; }
+  .kiosk-card { min-height: 220px; }
+}
+
+@media (max-width: 640px) {
+  .kiosk-card { padding: 24px !important; }
+  main { scroll-margin-top: 12px; }
+}

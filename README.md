@@ -13,6 +13,12 @@ Touch-friendly garden store kiosk with POS, plant identification, a garden visua
 
 `.env` and `greenprint.local.php` are ignored by Git and blocked from direct HTTP access by `.htaccess`. Keep Apache `AllowOverride` enabled so those access rules take effect. The PHP database connection is server-side; the browser never receives the PostgreSQL password or Gemini key.
 
+## Deploying the catalog to Netlify
+
+Netlify's build command runs `build-netlify.mjs` to publish only the kiosk's static HTML, JavaScript, styles, and `IMAGE/` assets under `dist/`. The Netlify Function source stays outside the published directory. Netlify does not run the PHP files in this project. The catalog uses `netlify/functions/public-config.mjs` to read the browser-safe Supabase project URL and anon/publishable key from Netlify Functions environment variables. In the Netlify site settings, add `SUPABASE_URL` and `SUPABASE_ANON_KEY` with Functions scope, then trigger a new deploy. These values are also available in the local `.env`; never add the database password, service-role key, Gemini key, admin passcode, or checkout PIN to browser code or Git.
+
+The public products query relies on the read-only `greenprint_public_catalog_read` row-level security policy from `database.sql`. If the POS or visualizer still says inventory is unavailable after redeploying, confirm both environment variables are present in the Netlify Functions scope and that the Supabase catalog policy and grants have been applied. XAMPP continues to load its config through `app_config.php` and use `get_products.php` as the local fallback. PHP-based checkout, admin, scanner, and device endpoints still need migration to Netlify Functions before those server-side features can run on a Netlify-only deployment; Netlify returns a GreenPrint unavailable page for direct `.php` requests.
+
 ## Application flows
 
 - POS and visualizer load active, in-stock catalog rows through `@supabase/supabase-js@2` under the read-only RLS policy, with `get_products.php` as a fallback. Product notes and all transaction/admin data remain server-side.
@@ -22,6 +28,7 @@ Touch-friendly garden store kiosk with POS, plant identification, a garden visua
 - The plant scanner uses the kiosk camera only. Visitors can follow the on-screen steps to identify a plant, read care guidance, and browse matching products. The camera requires browser permission; localhost is allowed by modern browsers.
 - The POS shows a short customer checkout guide; a staff member still authorizes the sale with the checkout PIN before the receipt prints.
 - Thermal receipts use the browser's 80 mm print stylesheet. Configure the kiosk browser and printer driver for the intended paper width and kiosk printing behavior.
+- The customer kiosk pages and owner dashboard include touch-sized controls and responsive layouts for tablet portrait and landscape use. The target Galaxy Tab A11 Wi-Fi display is 8.7 inches at 1340 × 800; landscape keeps the main workflows compact while portrait uses stacked, scrollable panels.
 - Sensor ingestion and pump polling expect the `X-GreenPrint-Device-Key` header. Pump polling accepts `zone_id=zone1` or `zone2`.
 
 ## Security and configuration notes
