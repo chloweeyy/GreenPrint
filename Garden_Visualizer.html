@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>GreenPrint — Garden Visualizer</title>
+<link rel="icon" type="image/jpeg" href="IMAGE/logo.jpg">
+<script src="https://cdn.tailwindcss.com"></script>
+<script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-error-container":"#93000a","surface-container-low":"#f3f4f1","primary-fixed-dim":"#a5d0b9","tertiary-fixed-dim":"#ffb781","on-tertiary-fixed":"#2f1400","background":"#f9faf6","on-secondary-fixed":"#002113","secondary-container":"#a0f4c8","secondary":"#0e6c4a","on-primary-fixed":"#002114","on-surface-variant":"#414844","secondary-fixed":"#a0f4c8","primary-container":"#1b4332","inverse-on-surface":"#f0f1ee","on-primary-container":"#86af99","inverse-primary":"#a5d0b9","surface-container":"#eeeeeb","surface-dim":"#dadad7","surface-container-highest":"#e2e3e0","primary-fixed":"#c1ecd4","on-secondary-fixed-variant":"#005236","surface-variant":"#e2e3e0","error-container":"#ffdad6","on-surface":"#1a1c1a","on-tertiary":"#ffffff","surface":"#f9faf6","secondary-fixed-dim":"#85d7ad","surface-tint":"#3f6653","surface-container-high":"#e8e8e5","surface-container-lowest":"#ffffff","on-background":"#1a1c1a","on-secondary-container":"#19724f","on-primary":"#ffffff","surface-bright":"#f9faf6","tertiary":"#3f1d00","on-error":"#ffffff","outline":"#717973","on-tertiary-container":"#ea9147","inverse-surface":"#2f312f","tertiary-container":"#5f2f00","on-secondary":"#ffffff","error":"#ba1a1a","on-primary-fixed-variant":"#274e3d","outline-variant":"#c1c8c2","tertiary-fixed":"#ffdcc4","primary":"#012d1d","on-tertiary-fixed-variant":"#6f3800"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"fontFamily":{"headline-lg":["Playfair Display"],"label-sm":["Inter"],"headline-xl":["Playfair Display"],"headline-md":["Playfair Display"],"body-lg":["Inter"],"label-bold":["Inter"],"body-sm":["Inter"],"body-md":["Inter"]}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<style>
+  body { background: var(--background); }
+  
+  .canvas-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: 
+      linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+    background-size: 80px 80px; 
+    z-index: 1;
+    display: none; 
+  }
+
+  .template-card {
+    min-width: 120px;
+    height: 80px;
+    border-radius: 12px;
+    background-color: #e2e3e0;
+    background-size: 100% 100%;
+    background-position: center;
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .template-card:hover { border-color: var(--secondary); transform: translateY(-2px); }
+  .template-card.active { border-color: var(--secondary); outline: 2px solid var(--secondary); outline-offset: 2px; }
+  .template-label { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: white; font-size: 11px; text-align: center; padding: 4px; font-weight: bold; }
+
+  /* 3D Canvas Item Layering & Dynamic Shadows */
+  .canvas-item {
+    position: absolute;
+    cursor: grab;
+    user-select: none;
+    transition: transform 0.1s;
+    touch-action: none;
+    transform-origin: bottom center;
+  }
+  .canvas-item:active { cursor: grabbing; transform: scale(1.05); z-index: 999 !important; }
+  .canvas-item img { pointer-events: none; height: auto; }
+
+  /* Pot Layer: Heavy floor shadow */
+  .type-pots img { filter: drop-shadow(0px 25px 15px rgba(0,0,0,0.6)); }
+  
+  /* Plant Layer: Light shadow to rest cleanly inside the pot */
+  .type-indoor img, .type-outdoor img { filter: drop-shadow(0px 5px 5px rgba(0,0,0,0.3)); }
+  
+  /* Pebble/Supply Layer: Isometric perspective tilt and tight shadow for topsoil illusion */
+  .type-pebbles img, .type-supplies img { 
+    filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.5)); 
+    transform: scaleY(0.6); 
+  }
+  
+  .delete-btn {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: #ba1a1a;
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 1000;
+  }
+  .canvas-item:hover .delete-btn { opacity: 1; }
+
+  @media (max-width: 850px) {
+    html, body { height: auto !important; min-height: 100vh; overflow-y: auto !important; overflow-x: hidden !important; }
+    header { padding: 12px 16px !important; }
+    main { flex-direction: column !important; overflow-y: visible !important; height: auto !important; padding: 16px !important; }
+    #left-panel { height: 550px !important; flex: none !important; }
+    #right-panel { width: 100% !important; height: 600px !important; flex: none !important; margin-bottom: 20px !important; }
+  }
+</style>
+</head>
+<body class="font-body-md text-on-background h-screen flex flex-col overflow-hidden">
+
+<header class="h-20 bg-surface/90 backdrop-blur-xl border-b border-outline-variant/30 z-40 flex items-center justify-between px-8 shrink-0">
+  <div class="brand flex items-center gap-3">
+    <div class="w-28 flex items-center justify-center shrink-0">
+      <img src="IMAGE/logo.png" alt="GreenPrint Logo" class="w-full h-auto object-contain" style="mix-blend-mode: multiply;">
+    </div>
+    <div>
+      <span class="text-[10px] tracking-widest text-secondary uppercase font-bold">GreenPrint Kiosk</span>
+      <h1 class="font-headline-md text-headline-md text-primary leading-tight">3D Garden Visualizer</h1>
+    </div>
+  </div>
+  <a href="index.html" class="flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-container-high hover:bg-secondary-container hover:text-on-secondary-container transition-all text-xs md:text-sm font-label-bold shrink-0">
+    <span class="material-symbols-outlined text-secondary">home</span>
+    <span class="hidden sm:inline">Return to Home</span>
+  </a>
+</header>
+
+<main class="flex-1 max-w-[1400px] w-full mx-auto p-4 md:p-6 flex gap-4 md:gap-6 overflow-hidden">
+  
+  <div id="left-panel" class="flex-1 bg-white border border-outline-variant/30 rounded-3xl p-4 md:p-6 shadow-sm flex flex-col relative overflow-hidden">
+    
+    <div class="mb-3 shrink-0">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-headline-md text-primary text-sm md:text-base">1. Choose a garden plan</h3>
+        <button onclick="clearCanvas()" class="text-error text-xs font-label-bold hover:underline">Clear All</button>
+      </div>
+      <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+        
+        <div class="template-card" onclick="loadTemplate('empty_room', this)" style="background-image: url('IMAGE/garden-pool-courtyard.svg');">
+          <div class="template-label">Pool Courtyard</div>
+        </div>
+        
+        <div class="template-card" onclick="loadTemplate('patio', this)" style="background-image: url('IMAGE/garden-cottage-patio.svg');">
+          <div class="template-label">Cottage Patio</div>
+        </div>
+        
+        <div class="template-card" onclick="loadTemplate('lawn', this)" style="background-image: url('IMAGE/garden-kitchen-garden.svg?v=20261001-seedling-clean');">
+          <div class="template-label">Kitchen Garden</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="mb-2 shrink-0 rounded-xl border border-secondary/15 bg-[#f2f7f1] px-3 py-2 text-[11px] leading-relaxed text-[#395446]">
+      <b class="text-primary">How to use:</b> 1) Choose a real setting. 2) Tap an item to place it, or drag it from inventory. 3) Drag a plant or pebbles onto a pot to combine them. Select a finished pot to separate or replace any layer.
+    </div>
+
+    <div id="canvasArea" class="flex-1 bg-surface-container-low rounded-2xl border-2 border-dashed border-outline-variant/50 relative overflow-hidden flex items-center justify-center transition-all duration-500">
+      
+      <div id="dimensionGrid" class="canvas-grid"></div>
+
+      <div id="canvasLoader" class="absolute inset-0 bg-black/60 backdrop-blur-md z-50 hidden items-center justify-center text-white flex-col">
+        <span class="material-symbols-outlined text-5xl animate-spin mb-3 text-secondary-fixed">autorenew</span>
+        <span class="font-headline-md text-xl tracking-wide">AI Decorating...</span>
+        <span class="text-xs text-surface-variant mt-2 opacity-80">Fetching items from your inventory</span>
+      </div>
+      
+      <div id="canvasPlaceholder" class="text-center z-10 relative bg-white/80 p-6 rounded-2xl backdrop-blur-sm border border-outline-variant/20 shadow-lg max-w-sm">
+        <span class="material-symbols-outlined text-5xl text-secondary mb-2">design_services</span>
+        <h3 class="font-headline-md text-primary text-xl mb-1">Start a Garden Plan</h3>
+        <p class="text-on-surface-variant text-sm">Choose a real place, arrange plants and pots, and drop optional pebbles inside a pot. Use 3D Preview to view the result.</p>
+      </div>
+    </div>
+    
+    <div class="mt-4 flex flex-col items-center shrink-0">
+      <button onclick="triggerAIDecorate()" id="aiDecorateBtn" disabled class="bg-secondary text-white px-8 py-3 rounded-full font-label-bold shadow-md hover:bg-primary transition-all flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+        <span class="material-symbols-outlined text-[18px]">auto_awesome</span> AI Auto-Decorate
+      </button>
+      <div id="aiSuggestion" class="mt-3 bg-primary-container text-on-primary-container px-5 py-3 rounded-2xl shadow-sm font-label-sm text-xs md:text-sm hidden w-full text-center border border-primary-fixed"></div>
+    </div>
+
+  </div>
+
+  <div id="right-panel" class="w-[380px] flex flex-col gap-4 shrink-0 h-full">
+    <div class="bg-white border border-outline-variant/30 rounded-3xl p-5 shadow-sm flex flex-col flex-1 overflow-hidden">
+      <h3 class="font-headline-md text-lg text-primary mb-1">Live Inventory</h3>
+      <p class="text-[10px] text-on-surface-variant mb-3">Tap to place, or drag onto the garden. Drop a plant or pebbles on a pot to layer them.</p>
+      
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-3 scrollbar-hide shrink-0" id="categoryChips">
+        <button class="cat-btn px-4 py-1.5 rounded-full bg-primary text-white font-label-bold whitespace-nowrap shadow-sm text-xs" data-category="all">All</button>
+        <button class="cat-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold whitespace-nowrap text-xs" data-category="indoor">Indoor</button>
+        <button class="cat-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold whitespace-nowrap text-xs" data-category="outdoor">Outdoor</button>
+        <button class="cat-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold whitespace-nowrap text-xs" data-category="pots">Pots</button>
+        <button class="cat-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold whitespace-nowrap text-xs" data-category="pebbles">Pebbles</button>
+      </div>
+
+      <input type="search" id="invSearch" autocomplete="off" placeholder="Search items & sizes..." class="w-full px-4 py-2.5 bg-surface border border-outline-variant/40 rounded-xl mb-4 text-sm focus:outline-none focus:border-secondary shrink-0" oninput="filterInventory()">
+      
+      <div id="inventoryList" class="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-hide">
+        <p class="text-center text-sm text-on-surface-variant mt-10">Loading stock...</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app_config.php"></script>
+<script>
+  const browserConfig = window.GREENPRINT_CONFIG || {};
+  const _supabase = window.supabase && browserConfig.supabaseUrl && browserConfig.supabaseAnonKey
+    ? window.supabase.createClient(browserConfig.supabaseUrl, browserConfig.supabaseAnonKey)
+    : null;
+  let PRODUCTS = [];
+  let activeCategory = 'all';
+  let currentThemeName = ""; 
+
+  const canvasArea = document.getElementById('canvasArea');
+  const placeholder = document.getElementById('canvasPlaceholder');
+  const gridOverlay = document.getElementById('dimensionGrid');
+  const aiDecorateBtn = document.getElementById('aiDecorateBtn');
+
+  async function loadInventory() {
+    try {
+      let products = null;
+      if (_supabase) {
+        const { data, error } = await _supabase.from('products').select('id, name, category, stock, is_active, image_url').eq('is_active', true).gt('stock', 0).order('name');
+        if (!error) products = data || [];
+        else console.warn('Supabase catalog read failed; trying the PHP catalog endpoint.', error.message);
+      }
+      if (products === null) {
+        const response = await fetch('get_products.php', { headers: { Accept: 'application/json' } });
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Inventory unavailable.');
+        products = result.data || [];
+      }
+      PRODUCTS = products;
+      renderInventory(PRODUCTS);
+    } catch (err) {
+      console.error('Could not load visualizer inventory:', err);
+      document.getElementById('inventoryList').innerHTML = '<p class="text-center text-sm text-on-surface-variant mt-10">Inventory is unavailable. Please try again.</p>';
+    }
+  }
+
+  function renderInventory(items) {
+    const list = document.getElementById('inventoryList');
+    if (items.length === 0) {
+      list.innerHTML = '<p class="text-center text-sm text-on-surface-variant mt-10">No items found.</p>';
+      return;
+    }
+    list.innerHTML = items.map(p => {
+      const imgSrc = /^IMAGE\//i.test(p.image_url || '') ? p.image_url : 'IMAGE/logo.png';
+      return '<button type="button" data-product-id="' + escapeHtml(p.id) + '" class="w-full flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/20 rounded-xl hover:border-secondary hover:shadow-md transition-all text-left">' +
+        '<div class="flex items-center gap-3 truncate pointer-events-none"><img src="' + escapeHtml(imgSrc) + '" onerror="this.src=&#39;IMAGE/logo.png&#39;" alt="" class="w-12 h-12 object-contain bg-surface-container rounded-lg p-1 shrink-0">' +
+        '<div class="flex flex-col truncate"><span class="font-label-bold text-sm text-on-surface truncate">' + escapeHtml(p.name) + '</span><span class="text-[10px] text-on-surface-variant uppercase tracking-wider">' + escapeHtml(p.category) + '</span></div></div></button>';
+    }).join('');
+    list.querySelectorAll('button[data-product-id]').forEach(button => button.addEventListener('click', () => {
+      const product = PRODUCTS.find(item => String(item.id) === button.dataset.productId);
+      if (product) addToCanvas(product.image_url, product.name, product.category);
+    }));
+  }
+
+  function filterInventory() {
+    const q = document.getElementById('invSearch').value.toLowerCase();
+    const filtered = PRODUCTS.filter(p => {
+      const matchesSearch = p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q);
+      const matchesCat = activeCategory === 'all' || p.category.toLowerCase() === activeCategory;
+      return matchesSearch && matchesCat;
+    });
+    renderInventory(filtered);
+  }
+
+  document.querySelectorAll('.cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.cat-btn').forEach(b => {
+        b.className = 'cat-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold whitespace-nowrap text-xs';
+      });
+      btn.className = 'cat-btn px-4 py-1.5 rounded-full bg-primary text-white font-label-bold whitespace-nowrap shadow-sm text-xs';
+      activeCategory = btn.dataset.category;
+      filterInventory();
+    });
+  });
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, function(m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+  }
+
+  // Ensures backgrounds stretch 100% vertically and horizontally to prevent cropping
+  function loadTemplate(themeType, cardElement) {
+    document.querySelectorAll('.template-card').forEach(c => c.classList.remove('active'));
+    cardElement.classList.add('active');
+
+    let bgUrl = '';
+    if (themeType === 'empty_room') {
+        bgUrl = 'IMAGE/garden-pool-courtyard.svg';
+        currentThemeName = "Pool Courtyard Garden";
+    } else if (themeType === 'patio') {
+        bgUrl = 'IMAGE/garden-cottage-patio.svg';
+        currentThemeName = "Cottage Patio Garden";
+    } else if (themeType === 'lawn') {
+        bgUrl = 'IMAGE/garden-kitchen-garden.svg?v=20261001-seedling-clean';
+        currentThemeName = "Kitchen Garden";
+    }
+
+    canvasArea.style.backgroundImage = `url('${bgUrl}')`;
+    canvasArea.style.backgroundSize = '100% 100%';
+    canvasArea.style.backgroundRepeat = 'no-repeat';
+    canvasArea.style.backgroundPosition = 'center';
+    
+    placeholder.style.display = 'none';
+    gridOverlay.style.display = 'block';
+    aiDecorateBtn.disabled = false; 
+  }
+
+  function getDimensions(name, category) {
+    const lowerName = name.toLowerCase();
+    let width = 120; 
+    let zIndex = 20; 
+
+    if (category === 'pots') zIndex = 10;
+    else if (category === 'indoor' || category === 'outdoor') zIndex = 20;
+    else if (category === 'pebbles' || category === 'supplies') zIndex = 30;
+
+    if (lowerName.includes('40 inch')) width = 260;
+    else if (lowerName.includes('20 inch') || lowerName.includes('extra large')) width = 220;
+    else if (lowerName.includes('16 inch')) width = 190;
+    else if (lowerName.includes('15 inch') || lowerName.includes('large')) width = 175;
+    else if (lowerName.includes('12 inch')) width = 150;
+    else if (lowerName.includes('10 inch') || lowerName.includes('medium')) width = 125;
+    else if (lowerName.includes('8 inch')) width = 100;
+    else if (lowerName.includes('6 inch') || lowerName.includes('small')) width = 80;
+    else if (lowerName.includes('5 inch')) width = 70;
+
+    return { width, zIndex };
+  }
+
+  function addToCanvas(imgSrc, name, category) {
+    if (!currentThemeName) {
+      alert('Please click a Realistic Template above before adding items!');
+      return;
+    }
+    const safeCategory = ['indoor', 'outdoor', 'pots', 'pebbles', 'supplies'].includes(category) ? category : 'indoor';
+    const safeImage = /^IMAGE\//i.test(imgSrc || '') ? imgSrc : 'IMAGE/logo.png';
+    const el = document.createElement('div');
+    el.className = 'canvas-item group type-' + safeCategory;
+    const dimensions = getDimensions(name, safeCategory);
+    el.style.zIndex = dimensions.zIndex;
+    const img = document.createElement('img');
+    img.src = safeImage;
+    img.alt = String(name || '');
+    img.style.width = dimensions.width + 'px';
+    img.onerror = () => { img.src = 'IMAGE/logo.png'; };
+    const delBtn = document.createElement('div');
+    delBtn.className = 'delete-btn';
+    delBtn.innerHTML = '<span class="material-symbols-outlined text-[14px]">close</span>';
+    el.append(img, delBtn);
+    delBtn.addEventListener('mousedown', e => e.stopPropagation());
+    delBtn.addEventListener('touchstart', e => e.stopPropagation());
+    delBtn.addEventListener('click', e => { e.stopPropagation(); el.remove(); });
+    const maxPosX = Math.max(0, canvasArea.clientWidth - dimensions.width);
+    const maxPosY = Math.max(0, canvasArea.clientHeight - dimensions.width);
+    const x = Math.min(maxPosX, Math.max(10, (canvasArea.clientWidth / 2) - (dimensions.width / 2) + (Math.random() * 40 - 20)));
+    const y = Math.min(maxPosY, Math.max(10, (canvasArea.clientHeight / 2) - (dimensions.width / 2) + (Math.random() * 40 - 20)));
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    makeDraggable(el);
+    canvasArea.appendChild(el);
+  }
+
+  function makeDraggable(el) {
+    let isDragging = false, startX, startY, initialX, initialY;
+
+    el.addEventListener('mousedown', dragStart);
+    el.addEventListener('touchstart', dragStart, {passive: false});
+
+    function dragStart(e) {
+      if (e.target.closest('.delete-btn')) return; 
+      isDragging = true;
+      const pos = e.type === 'touchstart' ? e.touches[0] : e;
+      startX = pos.clientX;
+      startY = pos.clientY;
+      initialX = el.offsetLeft;
+      initialY = el.offsetTop;
+      
+      document.addEventListener('mousemove', drag);
+      document.addEventListener('touchmove', drag, {passive: false});
+      document.addEventListener('mouseup', dragEnd);
+      document.addEventListener('touchend', dragEnd);
+    }
+
+    function drag(e) {
+      if (!isDragging) return;
+      e.preventDefault(); 
+      const pos = e.type === 'touchmove' ? e.touches[0] : e;
+      const dx = pos.clientX - startX;
+      const dy = pos.clientY - startY;
+      
+      let newX = initialX + dx;
+      let newY = initialY + dy;
+
+      newX = Math.max(0, Math.min(newX, canvasArea.clientWidth - el.clientWidth));
+      newY = Math.max(0, Math.min(newY, canvasArea.clientHeight - el.clientHeight));
+
+      el.style.left = `${newX}px`;
+      el.style.top = `${newY}px`;
+    }
+
+    function dragEnd() {
+      isDragging = false;
+      document.removeEventListener('mousemove', drag);
+      document.removeEventListener('touchmove', drag);
+      document.removeEventListener('mouseup', dragEnd);
+      document.removeEventListener('touchend', dragEnd);
+    }
+  }
+
+  function clearCanvas() {
+    document.querySelectorAll('.canvas-item').forEach(el => el.remove());
+    document.querySelectorAll('.template-card').forEach(c => c.classList.remove('active'));
+    canvasArea.style.backgroundImage = 'none';
+    gridOverlay.style.display = 'none';
+    placeholder.style.display = 'block';
+    document.getElementById('aiSuggestion').classList.add('hidden');
+    currentThemeName = "";
+    aiDecorateBtn.disabled = true;
+  }
+
+  const tryAdd = (name) => {
+    if(!name || name === 'None') return;
+    const found = PRODUCTS.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if(found) addToCanvas(found.image_url || 'IMAGE/logo.png', found.name, found.category);
+  };
+
+  async function triggerAIDecorate() {
+    if (!currentThemeName) return;
+
+    aiDecorateBtn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">refresh</span> Decorating...';
+    aiDecorateBtn.disabled = true;
+    document.getElementById('canvasLoader').classList.remove('hidden');
+    document.getElementById('canvasLoader').classList.add('flex');
+
+    try {
+      const response = await fetch('visualize_garden.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ theme: currentThemeName })
+      });
+      const rawData = await response.json();
+      if (!response.ok || rawData.status !== 'success' || !rawData.data) throw new Error(rawData.message || 'AI decorator is unavailable.');
+      const designData = rawData.data;
+      
+      document.querySelectorAll('.canvas-item').forEach(el => el.remove()); 
+      
+      tryAdd(designData.suggested_pot);
+      setTimeout(() => tryAdd(designData.suggested_plant), 100);
+      setTimeout(() => tryAdd(designData.suggested_stones), 200);
+
+      const bubble = document.getElementById('aiSuggestion');
+      bubble.innerHTML = `
+        <div class="flex flex-col gap-1.5">
+            <span>💡 <b>Designer Tip:</b> ${escapeHtml(designData.layout_tip || "Choose a balanced mix of shapes and heights.")}</span>
+            <span class="text-secondary bg-surface-container-low px-3 py-1 rounded-md mt-1 inline-block border border-secondary/20">📏 <b>Scale & Space:</b> ${escapeHtml(designData.dimension_guide || "Standard sizing applies.")}</span>
+        </div>
+      `;
+      bubble.classList.remove('hidden');
+
+    } catch (err) {
+      console.warn("AI Key Error - Using local fallback for defense.", err);
+      document.querySelectorAll('.canvas-item').forEach(el => el.remove()); 
+      
+      const pots = PRODUCTS.filter(p => p.category === 'pots');
+      const plants = PRODUCTS.filter(p => p.category === 'indoor' || p.category === 'outdoor');
+      const pebbles = PRODUCTS.filter(p => p.category === 'pebbles');
+
+      if(pots.length) tryAdd(pots[Math.floor(Math.random()*pots.length)].name);
+      setTimeout(() => { if(plants.length) tryAdd(plants[Math.floor(Math.random()*plants.length)].name); }, 100);
+      setTimeout(() => { if(pebbles.length) tryAdd(pebbles[Math.floor(Math.random()*pebbles.length)].name); }, 200);
+
+      const bubble = document.getElementById('aiSuggestion');
+      bubble.innerHTML = `
+        <div class="flex flex-col gap-1.5">
+            <span>💡 <b>Designer Tip:</b> Ensure the pot size correctly matches the roots of the selected plant.</span>
+            <span class="text-secondary bg-surface-container-low px-3 py-1 rounded-md mt-1 inline-block border border-secondary/20">📏 <b>Scale & Space:</b> Check the 1-meter grid lines to gauge real-world spacing.</span>
+        </div>
+      `;
+      bubble.classList.remove('hidden');
+
+    } finally {
+      document.getElementById('canvasLoader').classList.remove('flex');
+      document.getElementById('canvasLoader').classList.add('hidden');
+      aiDecorateBtn.innerHTML = '<span class="material-symbols-outlined text-[18px]">auto_awesome</span> AI Auto-Decorate';
+      aiDecorateBtn.disabled = false;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', loadInventory);
+</script>
+<script src="garden_visualizer_3d.js?v=20261001-plain-garden-art"></script>
+</body>
+</html>

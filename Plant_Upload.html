@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GreenPrint — AI Plant Scanner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Favicon uses the JPG -->
+<link rel="icon" type="image/jpeg" href="IMAGE/logo.jpg">
+<script src="https://cdn.tailwindcss.com"></script>
+<script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-error-container":"#93000a","surface-container-low":"#f3f4f1","primary-fixed-dim":"#a5d0b9","tertiary-fixed-dim":"#ffb781","on-tertiary-fixed":"#2f1400","background":"#f9faf6","on-secondary-fixed":"#002113","secondary-container":"#a0f4c8","secondary":"#0e6c4a","on-primary-fixed":"#002114","on-surface-variant":"#414844","secondary-fixed":"#a0f4c8","primary-container":"#1b4332","inverse-on-surface":"#f0f1ee","on-primary-container":"#86af99","inverse-primary":"#a5d0b9","surface-container":"#eeeeeb","surface-dim":"#dadad7","surface-container-highest":"#e2e3e0","primary-fixed":"#c1ecd4","on-secondary-fixed-variant":"#005236","surface-variant":"#e2e3e0","error-container":"#ffdad6","on-surface":"#1a1c1a","on-tertiary":"#ffffff","surface":"#f9faf6","secondary-fixed-dim":"#85d7ad","surface-tint":"#3f6653","surface-container-high":"#e8e8e5","surface-container-lowest":"#ffffff","on-background":"#1a1c1a","on-secondary-container":"#19724f","on-primary":"#ffffff","surface-bright":"#f9faf6","tertiary":"#3f1d00","on-error":"#ffffff","outline":"#717973","on-tertiary-container":"#ea9147","inverse-surface":"#2f312f","tertiary-container":"#5f2f00","on-secondary":"#ffffff","error":"#ba1a1a","on-primary-fixed-variant":"#274e3d","outline-variant":"#c1c8c2","tertiary-fixed":"#ffdcc4","primary":"#012d1d","on-tertiary-fixed-variant":"#6f3800"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"fontFamily":{"headline-lg":["Playfair Display"],"label-sm":["Inter"],"headline-xl":["Playfair Display"],"headline-md":["Playfair Display"],"body-lg":["Inter"],"label-bold":["Inter"],"body-sm":["Inter"],"body-md":["Inter"]}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<style>
+  body {
+    background: radial-gradient(1400px 800px at 50% -10%, rgba(127,167,135,.2), transparent), #f9faf6;
+  }
+</style>
+</head>
+<body class="font-body-md text-on-background flex flex-col min-h-screen">
+
+  <!-- Header -->
+  <header class="flex items-center justify-between px-8 py-4 bg-white border-b border-outline-variant/30 shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-28 flex items-center justify-center">
+        <img src="IMAGE/logo.png" alt="GreenPrint Logo" class="w-full h-auto object-contain" style="mix-blend-mode: multiply;">
+      </div>
+      <div>
+        <h1 class="font-headline-md text-lg text-primary font-bold">AI Plant Scanner</h1>
+        <span class="text-[11px] text-secondary font-bold uppercase tracking-wider">GreenPrint Kiosk</span>
+      </div>
+    </div>
+    <a href="index.html" class="flex items-center gap-2 px-4 py-2 rounded-full bg-surface-container hover:bg-surface-dim font-label-bold text-xs text-primary transition-colors">
+      <span class="material-symbols-outlined text-[16px]">home</span> Return to Home
+    </a>
+  </header>
+
+  <!-- Main Scanner Layout -->
+  <main class="flex-1 max-w-[1400px] w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+    
+    <!-- Left Column: Camera Viewfinder Box -->
+    <div class="bg-white p-6 rounded-[32px] border border-outline-variant/30 shadow-lg flex flex-col items-center">
+      <div class="w-full rounded-2xl border border-secondary/15 bg-[#f2f7f1] px-4 py-3 mb-4 text-left text-xs leading-relaxed text-on-surface-variant" role="note" aria-label="Plant scanner instructions">
+        <b class="text-primary">How to identify a plant</b><br>
+        1. Allow camera access when asked, then point the camera at one plant or leaf.<br>
+        2. Keep the plant well-lit and in focus, then tap <b>Start Scan</b>.<br>
+        3. Read the care tips and use <b>Shop available plants</b> to browse matches.
+      </div>
+      <div class="relative w-full aspect-[4/3] rounded-[24px] overflow-hidden bg-black shadow-inner mb-6">
+        <video id="cameraFeed" autoplay playsinline muted class="w-full h-full object-cover"></video>
+        <canvas id="captureCanvas" class="hidden"></canvas>
+        <div class="absolute top-4 left-4 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full text-xs font-label-bold text-white flex items-center gap-2">
+          <span class="h-2 w-2 rounded-full bg-error animate-pulse"></span> Live Feed
+        </div>
+      </div>
+      <button onclick="processScan()" id="scanBtn" class="w-full py-4 bg-primary text-white hover:bg-forest-hover rounded-2xl font-label-bold text-lg shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer">
+        <span class="material-symbols-outlined text-[24px]">document_scanner</span> Start Scan
+      </button>
+    </div>
+
+    <!-- Right Column: AI Results & Diagnostics Box -->
+    <div class="bg-white rounded-[32px] p-8 border border-outline-variant/30 shadow-lg flex flex-col justify-between min-h-[500px]">
+      
+      <!-- Initial / Empty State -->
+      <div id="emptyState" class="flex flex-col items-center justify-center text-center my-auto py-12">
+        <div class="h-20 w-20 bg-surface-container text-secondary rounded-full flex items-center justify-center mb-4">
+          <span class="material-symbols-outlined text-[40px]">qr_code_scanner</span>
+        </div>
+        <h3 class="font-headline-md text-2xl text-primary mb-2">Ready to Scan</h3>
+        <p class="text-on-surface-variant text-sm max-w-sm leading-relaxed">Point the camera at any plant leaf, flower, or pot, and tap "Start Scan" to let our AI analyze it.</p>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loadingState" class="hidden flex flex-col items-center justify-center text-center my-auto py-12">
+        <div class="h-16 w-16 bg-secondary-container text-on-secondary-container rounded-full flex items-center justify-center mb-4 animate-pulse">
+          <span class="material-symbols-outlined text-[32px] animate-spin">autorenew</span>
+        </div>
+        <h3 class="font-headline-md text-2xl text-primary mb-2">Analyzing Specimen...</h3>
+        <p class="text-on-surface-variant text-sm">Cross-referencing store inventory &amp; botanical data...</p>
+      </div>
+
+      <!-- Results Container -->
+      <div id="resultsData" class="hidden flex flex-col gap-4">
+        <div class="flex items-start justify-between border-b border-outline-variant/30 pb-3">
+          <div>
+            <span class="text-[11px] font-label-bold text-secondary uppercase tracking-widest">Identified Specimen</span>
+            <h2 id="resName" class="font-headline-lg text-2xl text-primary mt-0.5">Plant Name</h2>
+          </div>
+          <div id="resToxBadge"></div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-surface-container/50 p-3 rounded-xl border border-outline-variant/20">
+            <span class="text-[10px] font-label-bold text-on-surface-variant uppercase flex items-center gap-1 mb-0.5"><span class="material-symbols-outlined text-[14px] text-secondary">wb_sunny</span> Sunlight</span>
+            <p id="resSun" class="text-xs font-semibold text-primary">--</p>
+          </div>
+          <div class="bg-surface-container/50 p-3 rounded-xl border border-outline-variant/20">
+            <span class="text-[10px] font-label-bold text-on-surface-variant uppercase flex items-center gap-1 mb-0.5"><span class="material-symbols-outlined text-[14px] text-secondary">water_drop</span> Watering</span>
+            <p id="resWater" class="text-xs font-semibold text-primary">--</p>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div class="bg-surface-container/50 p-3 rounded-xl border border-outline-variant/20">
+            <span class="text-[10px] font-label-bold text-on-surface-variant uppercase flex items-center gap-1 mb-0.5"><span class="material-symbols-outlined text-[14px] text-secondary">nest_eco_leaf</span> Care Instructions</span>
+            <p id="resCare" class="text-xs text-on-surface-variant leading-relaxed">--</p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-surface-container/50 p-3 rounded-xl border border-outline-variant/20">
+              <span class="text-[10px] font-label-bold text-on-surface-variant uppercase flex items-center gap-1 mb-0.5"><span class="material-symbols-outlined text-[14px] text-secondary">potted_plant</span> Soil Type</span>
+              <p id="resSoil" class="text-xs font-semibold text-primary">--</p>
+            </div>
+            <div class="bg-surface-container/50 p-3 rounded-xl border border-outline-variant/20">
+              <span class="text-[10px] font-label-bold text-on-surface-variant uppercase flex items-center gap-1 mb-0.5"><span class="material-symbols-outlined text-[14px] text-secondary">thermostat</span> Ideal Temp</span>
+              <p id="resTemp" class="text-xs font-semibold text-primary">--</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="matchedProducts" class="hidden rounded-xl border border-secondary/20 bg-secondary-container/30 p-4"></div>
+        <button onclick="resetScanner()" class="w-full py-3 bg-surface-container text-primary hover:bg-surface-dim rounded-xl font-label-bold text-xs transition-colors flex items-center justify-center gap-2 mt-2">
+          <span class="material-symbols-outlined text-[16px]">refresh</span> Scan Another Plant
+        </button>
+      </div>
+
+      <!-- Footer Info -->
+      <div class="pt-4 border-t border-outline-variant/30 text-center text-[11px] text-on-surface-variant/60">
+        GreenPrint Kiosk AI Engine · Powered by Gemini Flash
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+const video = document.getElementById('cameraFeed');
+    const canvas = document.getElementById('captureCanvas');
+    const scanBtn = document.getElementById('scanBtn');
+
+    const emptyState = document.getElementById('emptyState');
+    const loadingState = document.getElementById('loadingState');
+    const resultsData = document.getElementById('resultsData');
+
+    let SHOP_INVENTORY = [];
+
+    async function startCamera() {
+      try {
+        let stream;
+        try {
+          // Try rear-facing camera first (for mobile/tablets)
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+          });
+        } catch (e) {
+          // Fallback to standard webcam for laptop/PC testing
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
+          });
+        }
+        video.srcObject = stream;
+        await video.play();
+      } catch (err) {
+        console.error("Camera access denied or unavailable:", err);
+        alert("Camera error: Please ensure you have granted camera permissions in your browser.");
+      }
+    }
+
+    async function processScan() {
+      if (!video.srcObject) {
+        alert("Camera is not active. Please grant camera permissions.");
+        return;
+      }
+
+      scanBtn.disabled = true;
+      scanBtn.innerHTML = `<span class="material-symbols-outlined text-[24px] animate-spin">autorenew</span> Analyzing...`;
+      emptyState.classList.add('hidden');
+      resultsData.classList.add('hidden');
+      loadingState.classList.remove('hidden');
+
+      try {
+        const context = canvas.getContext('2d');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+        if (!imageBlob) throw new Error('The plant image could not be prepared.');
+        const formData = new FormData();
+        formData.append('plant_image', imageBlob, 'plant-scan.jpg');
+        const response = await fetch('identify_plant.php', { method: 'POST', body: formData, headers: { Accept: 'application/json' } });
+        const rawData = await response.json();
+        if (!response.ok || rawData.status !== 'success' || !rawData.data) throw new Error(rawData.message || 'Plant identification is unavailable.');
+        const plantData = rawData.data;
+
+        document.getElementById('resName').textContent = plantData.name || "Unknown Plant";
+        document.getElementById('resSun').textContent = plantData.sunlight || "No data available.";
+        document.getElementById('resWater').textContent = plantData.watering || "No data available.";
+        document.getElementById('resCare').textContent = plantData.care_instructions || "No data available.";
+        document.getElementById('resSoil').textContent = plantData.soil_type || "No data available.";
+        document.getElementById('resTemp').textContent = plantData.ideal_temperature || "No data available.";
+
+        const matchedProducts = document.getElementById('matchedProducts');
+        const availableProducts = rawData.products || [];
+        matchedProducts.replaceChildren();
+        matchedProducts.classList.toggle('hidden', availableProducts.length === 0);
+        if (availableProducts.length) {
+          const heading = document.createElement('p');
+          heading.className = 'text-xs font-label-bold text-primary mb-2';
+          heading.textContent = 'Available in the garden store';
+          const items = document.createElement('p');
+          items.className = 'text-xs text-on-surface-variant mb-3';
+          items.textContent = availableProducts.map(item => item.name + ' — ₱' + Number(item.price).toFixed(2)).join(' · ');
+          const shopLink = document.createElement('a');
+          shopLink.href = 'pos.html';
+          shopLink.className = 'inline-flex items-center gap-2 text-xs font-label-bold text-secondary underline';
+          shopLink.textContent = 'Shop available plants';
+          matchedProducts.append(heading, items, shopLink);
+        }
+        
+        const toxBadge = document.getElementById('resToxBadge');
+        if (plantData.is_toxic === true || plantData.is_toxic === "true") {
+          toxBadge.style.display = 'flex';
+          toxBadge.className = 'bg-error-container text-on-error-container px-3 py-1 rounded-full text-xs font-label-bold flex items-center gap-1';
+          toxBadge.innerHTML = `<span class="material-symbols-outlined text-[14px]">warning</span> Toxic to Pets/Kids`;
+        } else if (plantData.is_toxic === false || plantData.is_toxic === "false") {
+          toxBadge.style.display = 'flex';
+          toxBadge.className = 'bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-xs font-label-bold flex items-center gap-1';
+          toxBadge.innerHTML = `<span class="material-symbols-outlined text-[14px]">check_circle</span> Non-Toxic (Safe)`;
+        } else {
+          toxBadge.style.display = 'none';
+        }
+
+        loadingState.classList.add('hidden');
+        resultsData.classList.remove('hidden');
+
+      } catch (err) {
+        console.error(err);
+        alert('Server Error: ' + err.message);
+        loadingState.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+      } finally {
+        scanBtn.disabled = false;
+        scanBtn.innerHTML = `<span class="material-symbols-outlined text-[24px]">document_scanner</span> Start Scan`;
+      }
+    }
+
+    function resetScanner() {
+      resultsData.classList.add('hidden');
+      emptyState.classList.remove('hidden');
+      scanBtn.innerHTML = `<span class="material-symbols-outlined text-[24px]">document_scanner</span> Start Scan`;
+      const matchedProducts = document.getElementById('matchedProducts');
+      if (matchedProducts) matchedProducts.replaceChildren();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      startCamera();
+    });
+  </script>
+</body>
+</html>

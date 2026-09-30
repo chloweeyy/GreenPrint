@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" preserveAspectRatio="none">
+<defs>
+  <pattern id="grass" width="82" height="82" patternUnits="userSpaceOnUse"><rect width="82" height="82" fill="#a9cc61"/><path d="M9 18q8-10 16 1m36 27q8-9 15 1m-49 23q8-8 15 0" fill="none" stroke="#83aa4b" stroke-width="2" opacity=".45"/><circle cx="63" cy="15" r="3" fill="#d0e486" opacity=".75"/></pattern>
+  <pattern id="paver" width="40" height="30" patternUnits="userSpaceOnUse"><rect width="40" height="30" fill="#aaa99e"/><path d="M0 2h38M2 2v26m19-26v26m18-26v26M21 15h19" fill="none" stroke="#747974" stroke-width="2"/><path d="M5 6h12m8 0h11" stroke="#d7d4c7" stroke-width="2"/></pattern>
+  <pattern id="soil" width="35" height="32" patternUnits="userSpaceOnUse"><rect width="35" height="32" fill="#69482f"/><circle cx="7" cy="8" r="2" fill="#a17a4e"/><circle cx="24" cy="23" r="2" fill="#49372a"/><path d="m14 5 5 3m8 19 5-3M2 26l6-4" stroke="#8d6941" stroke-width="2"/></pattern>
+  <pattern id="wood" width="26" height="760" patternUnits="userSpaceOnUse"><rect width="26" height="760" fill="#bf8d5b"/><path d="M1 0v760M24 0v760" stroke="#895d3e" stroke-width="2"/><path d="M6 0v760" stroke="#dab07b" stroke-width="2"/></pattern>
+  <pattern id="roof" width="38" height="26" patternUnits="userSpaceOnUse"><rect width="38" height="26" fill="#777d7b"/><path d="M0 1h37M1 1v24m18-24v24m18-24v24" fill="none" stroke="#515959" stroke-width="2"/></pattern>
+  <radialGradient id="crown"><stop stop-color="#d0e891"/><stop offset=".65" stop-color="#83b253"/><stop offset="1" stop-color="#4d793d"/></radialGradient>
+  <g id="sprout"><path d="M0 10V1m0 5C-10 5-12-3-3-4 1-1 1 2 0 6m1-2c0-9 9-10 11-5-1 5-6 8-11 7" fill="#3d7a3e" stroke="#285c32" stroke-width="1.5"/><circle cx="-2" cy="-1" r="1.5" fill="#9c3d39"/><circle cx="6" cy="-2" r="1.5" fill="#d34439"/></g>
+</defs>
+<rect width="1200" height="760" fill="url(#grass)"/>
+<!-- boundary hedge and timber fence -->
+<path d="M24 22H1176V738H24Z" fill="none" stroke="#527d3d" stroke-width="22" stroke-dasharray="7 10" stroke-linecap="round"/>
+<path d="M42 40H1158V720H42Z" fill="none" stroke="#426d37" stroke-width="5"/>
+<!-- greenhouse and shed, top right -->
+<rect x="795" y="57" width="330" height="177" rx="5" fill="url(#paver)" stroke="#727978" stroke-width="8"/>
+<rect x="817" y="73" width="286" height="145" fill="#b6e2e1" stroke="#f3f0df" stroke-width="8"/>
+<path d="M817 121h286M817 169h286M865 73v145m48-145v145m48-145v145m48-145v145m48-145v145" stroke="#6d8f8d" stroke-width="5" opacity=".85"/>
+<path d="M790 54h340v10H790z" fill="#5b6865"/>
+<rect x="102" y="77" width="235" height="140" rx="5" fill="url(#roof)" stroke="#4c5552" stroke-width="8"/>
+<path d="M173 217v-51a45 45 0 0 1 90 0v51" fill="#a97e53" stroke="#4c5552" stroke-width="5"/><rect x="136" y="103" width="54" height="41" fill="#acd9dc" stroke="#e7e6d7" stroke-width="5"/><rect x="248" y="103" width="54" height="41" fill="#acd9dc" stroke="#e7e6d7" stroke-width="5"/>
+<!-- paved path with circular stepping pads -->
+<path d="M337 162C468 164 465 283 590 283S704 342 735 445" fill="none" stroke="#8c8b80" stroke-width="88" opacity=".42"/><path d="M337 162C468 164 465 283 590 283S704 342 735 445" fill="none" stroke="url(#paver)" stroke-width="75"/>
+<!-- central patio with picnic table -->
+<rect x="435" y="354" width="365" height="230" rx="8" fill="url(#wood)" stroke="#795337" stroke-width="9"/>
+<rect x="522" y="408" width="191" height="58" rx="8" fill="#805a38" stroke="#543e2d" stroke-width="5"/><path d="M551 467v55m135-55v55M496 412v54m-15-5h45m224-49v54m-15-5h45" stroke="#69482f" stroke-width="12" stroke-linecap="round"/>
+<circle cx="617" cy="384" r="32" fill="#e2d8bf" stroke="#927a56" stroke-width="4"/><path d="M617 352v64m-32-32h64m-54-22 44 44m0-44-44 44" stroke="#bca882" stroke-width="3"/>
+<!-- raised vegetable beds -->
+<g stroke="#5c3f29" stroke-width="8">
+ <rect x="93" y="316" width="274" height="157" rx="6" fill="url(#soil)"/><rect x="93" y="497" width="274" height="157" rx="6" fill="url(#soil)"/>
+ <rect x="839" y="325" width="279" height="152" rx="6" fill="url(#soil)"/><rect x="839" y="502" width="279" height="152" rx="6" fill="url(#soil)"/>
+</g>
+<g>
+ <use href="#sprout" x="132" y="351"/><use href="#sprout" x="190" y="351"/><use href="#sprout" x="248" y="351"/><use href="#sprout" x="306" y="351"/>
+ <use href="#sprout" x="132" y="407"/><use href="#sprout" x="190" y="407"/><use href="#sprout" x="248" y="407"/><use href="#sprout" x="306" y="407"/>
+ <use href="#sprout" x="132" y="463"/><use href="#sprout" x="190" y="463"/><use href="#sprout" x="248" y="463"/><use href="#sprout" x="306" y="463"/>
+ <use href="#sprout" x="878" y="359"/><use href="#sprout" x="936" y="359"/><use href="#sprout" x="994" y="359"/><use href="#sprout" x="1052" y="359"/>
+ <use href="#sprout" x="878" y="418"/><use href="#sprout" x="936" y="418"/><use href="#sprout" x="994" y="418"/><use href="#sprout" x="1052" y="418"/>
+ <use href="#sprout" x="878" y="538"/><use href="#sprout" x="936" y="538"/><use href="#sprout" x="994" y="538"/><use href="#sprout" x="1052" y="538"/>
+ <use href="#sprout" x="878" y="598"/><use href="#sprout" x="936" y="598"/><use href="#sprout" x="994" y="598"/><use href="#sprout" x="1052" y="598"/>
+</g>
+<!-- trees and circular planting islands -->
+<g stroke="#466d37" stroke-width="5"><circle cx="482" cy="154" r="53" fill="url(#crown)"/><circle cx="482" cy="154" r="36" fill="none" stroke="#a4ca6b" stroke-width="4"/><circle cx="732" cy="643" r="49" fill="url(#crown)"/><circle cx="732" cy="643" r="31" fill="none" stroke="#a4ca6b" stroke-width="4"/><circle cx="535" cy="642" r="42" fill="url(#crown)"/></g>
+<g fill="#d87b56"><circle cx="411" cy="610" r="8"/><circle cx="393" cy="628" r="7"/><circle cx="416" cy="646" r="8"/><circle cx="784" cy="295" r="8"/><circle cx="804" cy="278" r="7"/><circle cx="790" cy="317" r="8"/></g>
+<!-- rain barrel and compost station -->
+<circle cx="1090" cy="274" r="35" fill="#5b8d58" stroke="#3f6944" stroke-width="6"/><ellipse cx="1090" cy="261" rx="25" ry="9" fill="#87b47a"/><path d="M1056 274h-37v24" fill="none" stroke="#596c4a" stroke-width="7"/><rect x="99" y="680" width="115" height="38" rx="7" fill="#806044" stroke="#5b422e" stroke-width="5"/><path d="M111 688h91m-80 0v23m34-23v23m34-23v23" stroke="#b99364" stroke-width="3"/>
+<!-- north arrow and metre scale -->
+<g transform="translate(1150 92)" fill="#234b34"><path d="M0 35V0l-13 20h26z"/></g>
+</svg>

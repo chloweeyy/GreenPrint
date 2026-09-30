@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>GreenPrint — Admin Login</title>
+<!-- Favicon uses the JPG -->
+<link rel="icon" type="image/jpeg" href="IMAGE/logo.jpg">
+<style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style>
+<script src="https://cdn.tailwindcss.com"></script>
+<script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-error-container":"#93000a","surface-container-low":"#f3f4f1","primary-fixed-dim":"#a5d0b9","tertiary-fixed-dim":"#ffb781","on-tertiary-fixed":"#2f1400","background":"#f9faf6","on-secondary-fixed":"#002113","secondary-container":"#a0f4c8","secondary":"#0e6c4a","on-primary-fixed":"#002114","on-surface-variant":"#414844","secondary-fixed":"#a0f4c8","primary-container":"#1b4332","inverse-on-surface":"#f0f1ee","on-primary-container":"#86af99","inverse-primary":"#a5d0b9","surface-container":"#eeeeeb","surface-dim":"#dadad7","surface-container-highest":"#e2e3e0","primary-fixed":"#c1ecd4","on-secondary-fixed-variant":"#005236","surface-variant":"#e2e3e0","error-container":"#ffdad6","on-surface":"#1a1c1a","on-tertiary":"#ffffff","surface":"#f9faf6","secondary-fixed-dim":"#85d7ad","surface-tint":"#3f6653","surface-container-high":"#e8e8e5","surface-container-lowest":"#ffffff","on-background":"#1a1c1a","on-secondary-container":"#19724f","on-primary":"#ffffff","surface-bright":"#f9faf6","tertiary":"#3f1d00","on-error":"#ffffff","outline":"#717973","on-tertiary-container":"#ea9147","inverse-surface":"#2f312f","tertiary-container":"#5f2f00","on-secondary":"#ffffff","error":"#ba1a1a","on-primary-fixed-variant":"#274e3d","outline-variant":"#c1c8c2","tertiary-fixed":"#ffdcc4","primary":"#012d1d","on-tertiary-fixed-variant":"#6f3800"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"spacing":{"unit":"8px","margin-desktop":"40px","container-max":"1280px","margin-mobile":"16px","gutter":"24px","stack-sm":"8px","stack-md":"16px","stack-lg":"32px"},"fontFamily":{"headline-lg":["Playfair Display"],"label-sm":["Inter"],"headline-xl":["Playfair Display"],"headline-md":["Playfair Display"],"body-lg":["Inter"],"headline-lg-mobile":["Playfair Display"],"label-bold":["Inter"],"body-sm":["Inter"],"body-md":["Inter"]},"fontSize":{"headline-lg":["32px",{"lineHeight":"40px","fontWeight":"600"}],"label-sm":["12px",{"lineHeight":"16px","fontWeight":"500"}],"headline-xl":["48px",{"lineHeight":"56px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-md":["24px",{"lineHeight":"32px","fontWeight":"600"}],"body-lg":["18px",{"lineHeight":"28px","fontWeight":"400"}],"headline-lg-mobile":["28px",{"lineHeight":"34px","fontWeight":"600"}],"label-bold":["14px",{"lineHeight":"16px","letterSpacing":"0.05em","fontWeight":"600"}],"body-sm":["14px",{"lineHeight":"20px","fontWeight":"400"}],"body-md":["16px",{"lineHeight":"24px","fontWeight":"400"}]}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-8px); }
+    75% { transform: translateX(8px); }
+  }
+  .animate-shake {
+    animation: shake 0.2s ease-in-out 0s 2;
+  }
+</style>
+</head>
+<body class="bg-background font-body-md text-on-background">
+<main class="min-h-screen flex items-center justify-center p-4">
+<div class="flex flex-col w-full items-center">
+<div class="relative flex min-h-[819px] w-full items-center justify-center p-6">
+<!-- Decorative Ambient Background Elements -->
+<div class="absolute inset-0 overflow-hidden pointer-events-none">
+<div class="absolute -top-[10%] -left-[5%] w-[400px] h-[400px] rounded-full bg-secondary-container/20 blur-[100px]"></div>
+<div class="absolute top-[60%] -right-[10%] w-[500px] h-[500px] rounded-full bg-primary-fixed/10 blur-[120px]"></div>
+</div>
+
+<!-- Login Container -->
+<div class="relative z-10 w-full max-w-[440px]">
+<!-- Logo Branding Section -->
+<div class="flex flex-col items-center mb-8 text-center">
+<div class="w-[420px] flex items-center justify-center mb-6 transform hover:scale-105 transition-transform duration-500">
+  <!-- Sized w-[420px] to match the exact size from the Home Screen (index.html) -->
+  <img src="IMAGE/logo.png" alt="GreenPrint Logo" class="w-full h-auto object-contain" style="mix-blend-mode: multiply;">
+</div>
+<div class="flex items-center gap-2">
+<span class="w-8 h-[1px] bg-outline-variant"></span>
+<span class="font-label-bold text-label-bold text-outline uppercase tracking-[0.2em]">Admin Mode</span>
+<span class="w-8 h-[1px] bg-outline-variant"></span>
+</div>
+</div>
+
+<!-- Credentials Card -->
+<div class="bg-surface-container-lowest rounded-xl shadow-xl shadow-primary/5 p-8 border border-surface-variant/30">
+<form class="space-y-6" id="loginForm">
+<div class="space-y-3">
+<div class="flex justify-between items-end mb-1">
+<label class="font-label-bold text-label-bold text-on-surface-variant uppercase" for="passcode">Secure Passcode</label>
+<span class="font-label-sm text-label-sm text-outline">Use your assigned admin passcode</span>
+</div>
+<div class="relative group">
+<input autocomplete="current-password" class="w-full h-16 text-center font-headline-lg text-headline-lg tracking-[0.15em] bg-surface-container-low text-on-surface rounded-lg border-none focus:ring-2 focus:ring-secondary/25 transition-all duration-300 placeholder:text-outline-variant/50" id="passcode" maxlength="128" name="passcode" placeholder="Admin passcode" required="" type="password">
+<div class="absolute inset-y-0 right-4 flex items-center">
+<span class="material-symbols-outlined text-outline cursor-pointer hover:text-secondary transition-colors select-none" id="visibilityToggle">visibility</span>
+</div>
+</div>
+
+<!-- Error State Container -->
+<div class="hidden items-center gap-2 mt-4 py-2 px-3 bg-error-container/20 rounded-lg" id="errorMessage">
+<span class="material-symbols-outlined text-error text-[18px]">error</span>
+<p class="font-body-sm text-body-sm text-error" id="errorText">Incorrect passcode. Please try again.</p>
+</div>
+</div>
+
+<button class="group relative w-full h-14 bg-primary text-on-primary font-label-bold text-label-bold uppercase tracking-widest rounded-lg overflow-hidden transition-all hover:bg-secondary active:scale-[0.98]" type="submit" id="submitBtn">
+<span class="relative z-10 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[20px]">lock_open</span>
+              Unlock Dashboard
+            </span>
+<div class="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+</button>
+</form>
+</div>
+
+<!-- Footer Metadata -->
+<div class="mt-8 flex flex-col items-center gap-2 opacity-60">
+<p class="font-body-sm text-body-sm text-center max-w-[300px]">
+          Authorized personnel only. All access attempts are logged for security compliance.
+        </p>
+</div>
+</div>
+</div>
+</div>
+</main>
+
+<script>
+  const passcode = document.getElementById('passcode');
+  const visibilityToggle = document.getElementById('visibilityToggle');
+  const loginForm = document.getElementById('loginForm');
+  const errorMessage = document.getElementById('errorMessage');
+  const errorText = document.getElementById('errorText');
+  const submitBtn = document.getElementById('submitBtn');
+
+  visibilityToggle.addEventListener('click', () => {
+    const type = passcode.getAttribute('type') === 'password' ? 'text' : 'password';
+    passcode.setAttribute('type', type);
+    visibilityToggle.textContent = type === 'password' ? 'visibility' : 'visibility_off';
+  });
+
+  loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    errorMessage.classList.add('hidden');
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = '0.7';
+    submitBtn.textContent = 'Verifying...';
+    try {
+      const response = await fetch('admin_login_handler.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ passcode: passcode.value.trim() })
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Access denied.');
+      sessionStorage.setItem('kgg_admin_csrf', result.csrf_token);
+      sessionStorage.setItem('kgg_admin_logged_in', 'true');
+      window.location.href = 'Owner_Dashboard.php';
+    } catch (error) {
+      errorMessage.classList.remove('hidden');
+      errorMessage.classList.add('flex');
+      errorText.textContent = error.message || 'Incorrect passcode. Access denied.';
+      const card = loginForm.closest('.bg-surface-container-lowest');
+      if (card) {
+        card.classList.add('animate-shake');
+        setTimeout(() => card.classList.remove('animate-shake'), 500);
+      }
+      submitBtn.style.opacity = '1';
+      submitBtn.innerHTML = '<span class="relative z-10 flex items-center justify-center gap-2"><span class="material-symbols-outlined text-[20px]">lock_open</span>Unlock Dashboard</span>';
+      submitBtn.disabled = false;
+      passcode.select();
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>GreenPrint — Welcome to KGG Garden</title>
+<!-- Favicon uses the JPG -->
+<link rel="icon" type="image/jpeg" href="IMAGE/logo.jpg">
+<script src="https://cdn.tailwindcss.com"></script>
+<script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-error-container":"#93000a","surface-container-low":"#f3f4f1","primary-fixed-dim":"#a5d0b9","tertiary-fixed-dim":"#ffb781","on-tertiary-fixed":"#2f1400","background":"#f9faf6","on-secondary-fixed":"#002113","secondary-container":"#a0f4c8","secondary":"#0e6c4a","on-primary-fixed":"#002114","on-surface-variant":"#414844","secondary-fixed":"#a0f4c8","primary-container":"#1b4332","inverse-on-surface":"#f0f1ee","on-primary-container":"#86af99","inverse-primary":"#a5d0b9","surface-container":"#eeeeeb","surface-dim":"#dadad7","surface-container-highest":"#e2e3e0","primary-fixed":"#c1ecd4","on-secondary-fixed-variant":"#005236","surface-variant":"#e2e3e0","error-container":"#ffdad6","on-surface":"#1a1c1a","on-tertiary":"#ffffff","surface":"#f9faf6","secondary-fixed-dim":"#85d7ad","surface-tint":"#3f6653","surface-container-high":"#e8e8e5","surface-container-lowest":"#ffffff","on-background":"#1a1c1a","on-secondary-container":"#19724f","on-primary":"#ffffff","surface-bright":"#f9faf6","tertiary":"#3f1d00","on-error":"#ffffff","outline":"#717973","on-tertiary-container":"#ea9147","inverse-surface":"#2f312f","tertiary-container":"#5f2f00","on-secondary":"#ffffff","error":"#ba1a1a","on-primary-fixed-variant":"#274e3d","outline-variant":"#c1c8c2","tertiary-fixed":"#ffdcc4","primary":"#012d1d","on-tertiary-fixed-variant":"#6f3800"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"fontFamily":{"headline-lg":["Playfair Display"],"label-sm":["Inter"],"headline-xl":["Playfair Display"],"headline-md":["Playfair Display"],"body-lg":["Inter"],"label-bold":["Inter"],"body-sm":["Inter"],"body-md":["Inter"]}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<style>
+  @layer base{html,body{margin:0;padding:0;}}
+  body {
+    background: radial-gradient(1400px 800px at 50% -10%, rgba(127,167,135,.2), transparent), #f9faf6;
+  }
+  html, body {
+    min-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .kiosk-card {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    text-decoration: none;
+    position: relative;
+  }
+  .kiosk-card:active {
+    transform: scale(0.96);
+  }
+</style>
+</head>
+<body class="font-body-md text-on-background flex flex-col items-center justify-center min-h-screen relative py-12 md:py-0">
+
+  <!-- Brand Logo & Header Prompt -->
+  <div class="mb-8 md:mb-10 flex flex-col items-center gap-3">
+    <div class="w-full max-w-[280px] md:max-w-[420px] flex items-center justify-center px-4">
+      <img src="IMAGE/logo.png" alt="GreenPrint Logo" class="w-full h-auto object-contain" style="mix-blend-mode: multiply;">
+    </div>
+    <div class="text-center mt-2 px-4">
+      <h1 class="font-headline-lg text-3xl md:text-[48px] text-primary leading-tight">What would you like to do?</h1>
+    </div>
+  </div>
+
+  <!-- Giant Touch Grid Options -->
+  <div class="flex flex-col md:flex-row gap-4 md:gap-6 w-full max-w-[1200px] justify-center px-4 md:px-8 pb-8">
+    
+    <!-- Option 1: Checkout (Direct Link to POS) -->
+    <a href="pos.html" class="kiosk-card flex-1 bg-white border-2 border-outline-variant/30 rounded-[32px] p-8 md:p-12 flex flex-col items-center text-center shadow-lg hover:shadow-2xl hover:border-secondary group relative overflow-hidden">
+      <div class="h-24 w-24 md:h-36 md:w-36 bg-surface-container text-secondary rounded-full flex items-center justify-center mb-6 md:mb-8 group-hover:scale-110 group-hover:bg-secondary-container group-hover:text-on-secondary-container transition-all duration-300">
+        <span class="material-symbols-outlined text-[48px] md:text-[72px]">point_of_sale</span>
+      </div>
+      <h2 class="font-headline-md text-2xl md:text-3xl text-primary mb-2 md:mb-3">Shop & Checkout</h2>
+      <p class="text-on-surface-variant text-sm md:text-lg leading-relaxed">Process POS transactions and update live stock records.</p>
+    </a>
+
+    <!-- Option 2: AI Identify -->
+    <a href="Plant_Upload.html" class="kiosk-card flex-1 bg-white border-2 border-outline-variant/30 rounded-[32px] p-8 md:p-12 flex flex-col items-center text-center shadow-lg hover:shadow-2xl hover:border-secondary group">
+      <div class="h-24 w-24 md:h-36 md:w-36 bg-surface-container text-secondary rounded-full flex items-center justify-center mb-6 md:mb-8 group-hover:scale-110 group-hover:bg-secondary-container group-hover:text-on-secondary-container transition-all duration-300">
+        <span class="material-symbols-outlined text-[48px] md:text-[72px]">photo_camera</span>
+      </div>
+      <h2 class="font-headline-md text-2xl md:text-3xl text-primary mb-2 md:mb-3">Identify Plant (AI)</h2>
+      <p class="text-on-surface-variant text-sm md:text-lg leading-relaxed">Use our smart camera to scan and identify any plant.</p>
+    </a>
+
+    <!-- Option 3: Garden Visualizer -->
+    <a href="Garden_Visualizer.html" class="kiosk-card flex-1 bg-white border-2 border-outline-variant/30 rounded-[32px] p-8 md:p-12 flex flex-col items-center text-center shadow-lg hover:shadow-2xl hover:border-secondary group">
+      <div class="h-24 w-24 md:h-36 md:w-36 bg-surface-container text-secondary rounded-full flex items-center justify-center mb-6 md:mb-8 group-hover:scale-110 group-hover:bg-secondary-container group-hover:text-on-secondary-container transition-all duration-300">
+        <span class="material-symbols-outlined text-[48px] md:text-[72px]">yard</span>
+      </div>
+      <h2 class="font-headline-md text-2xl md:text-3xl text-primary mb-2 md:mb-3">Garden Visualizer</h2>
+      <p class="text-on-surface-variant text-sm md:text-lg leading-relaxed">Design and preview your dream layout before buying.</p>
+    </a>
+
+  </div>
+
+</body>
+</html>

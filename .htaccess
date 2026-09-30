@@ -1,0 +1,6 @@
+Options -Indexes
+RewriteEngine On
+RewriteRule ^Owner_Dashboard\.html$ Owner_Dashboard.php [L]
+<FilesMatch "^(\.env(\..*)?|greenprint\.local(\..*)?\.php|config\.php|db\.php|api_common\.php|gemini_client\.php|database\.sql|README\.md|.*\.log)$">
+  Require all denied
+</FilesMatch>

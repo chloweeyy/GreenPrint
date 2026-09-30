@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>GreenPrint — Staff POS</title>
+<link rel="icon" type="image/jpeg" href="IMAGE/logo.jpg">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-error-container":"#93000a","surface-container-low":"#f3f4f1","primary-fixed-dim":"#a5d0b9","tertiary-fixed-dim":"#ffb781","on-tertiary-fixed":"#2f1400","background":"#f9faf6","on-secondary-fixed":"#002113","secondary-container":"#a0f4c8","secondary":"#0e6c4a","on-primary-fixed":"#002114","on-surface-variant":"#414844","secondary-fixed":"#a0f4c8","primary-container":"#1b4332","inverse-on-surface":"#f0f1ee","on-primary-container":"#86af99","inverse-primary":"#a5d0b9","surface-container":"#eeeeeb","surface-dim":"#dadad7","surface-container-highest":"#e2e3e0","primary-fixed":"#c1ecd4","on-secondary-fixed-variant":"#005236","surface-variant":"#e2e3e0","error-container":"#ffdad6","on-surface":"#1a1c1a","on-tertiary":"#ffffff","surface":"#f9faf6","secondary-fixed-dim":"#85d7ad","surface-tint":"#3f6653","surface-container-high":"#e8e8e5","surface-container-lowest":"#ffffff","on-background":"#1a1c1a","on-secondary-container":"#19724f","on-primary":"#ffffff","surface-bright":"#f9faf6","tertiary":"#3f1d00","on-error":"#ffffff","outline":"#717973","on-tertiary-container":"#ea9147","inverse-surface":"#2f312f","tertiary-container":"#5f2f00","on-secondary":"#ffffff","error":"#ba1a1a","on-primary-fixed-variant":"#274e3d","outline-variant":"#c1c8c2","tertiary-fixed":"#ffdcc4","primary":"#012d1d","on-tertiary-fixed-variant":"#6f3800"},"borderRadius":{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},"fontFamily":{"headline-lg":["Playfair Display"],"label-sm":["Inter"],"headline-xl":["Playfair Display"],"headline-md":["Playfair Display"],"body-lg":["Inter"],"label-bold":["Inter"],"body-sm":["Inter"],"body-md":["Inter"]}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<style>
+@layer base{html,body{margin:0;padding:0;}}::-webkit-scrollbar{display:none;} .autofill-decoy{position:fixed!important;left:-10000px!important;top:0!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;}
+
+html, body {
+  height: 100vh;
+  overflow: hidden;
+  touch-action: pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* THERMAL PRINTER STYLES */
+@media print {
+  @page { size: 80mm auto; margin: 0; }
+  body * { visibility: hidden; }
+  #thermalReceipt, #thermalReceipt * { visibility: visible; }
+  #thermalReceipt {
+    position: absolute; left: 0; top: 0;
+    width: 80mm; 
+    margin: 0; padding: 10px;
+    font-family: monospace; font-size: 12px; color: black;
+  }
+  .no-print { display: none !important; }
+}
+
+@media (max-width: 850px) {
+  html, body { height: auto !important; overflow-y: auto !important; overflow-x: hidden !important; }
+  header { flex-direction: column !important; align-items: center !important; text-align: center !important; gap: 14px !important; padding: 16px 20px !important; height: auto !important; }
+  .brand { flex-direction: column !important; align-items: center !important; gap: 6px !important; }
+  .header-right { width: 100% !important; justify-content: center !important; flex-wrap: wrap !important; gap: 8px !important; }
+  main { flex-direction: column !important; height: auto !important; overflow-y: visible !important; }
+  #posProductGridContainer { overflow-y: visible !important; max-height: none !important; flex: none !important; }
+  .cart-sidebar { width: 100% !important; height: auto !important; border-left: none !important; border-top: 2px solid var(--card-border) !important; }
+}
+</style>
+</head>
+<body class="bg-background font-body-md text-on-background flex flex-col h-screen overflow-hidden">
+<form aria-hidden="true" class="autofill-decoy" autocomplete="on" tabindex="-1"><input type="text" name="name" autocomplete="name" tabindex="-1"><input type="email" name="email" autocomplete="email" tabindex="-1"></form>
+
+<header class="h-20 bg-surface/90 backdrop-blur-xl border-b border-outline-variant/30 z-40 flex items-center justify-between px-8 shrink-0 no-print">
+  <div class="brand flex items-center gap-3">
+    <div class="w-28 flex items-center justify-center shrink-0">
+      <img src="IMAGE/logo.png" alt="GreenPrint Logo" class="w-full h-auto object-contain" style="mix-blend-mode: multiply;">
+    </div>
+    <div>
+      <span class="text-[10px] tracking-widest text-primary uppercase font-bold flex items-center gap-1">Kiosk Checkout</span>
+      <span class="font-headline-md text-headline-md text-primary leading-tight">KGG Garden Store</span>
+    </div>
+  </div>
+
+  <div class="header-right flex items-center gap-4">
+    <button onclick="window.location.href='index.html'" class="flex items-center gap-2 px-5 py-2.5 rounded-full bg-surface-container-high text-on-surface-variant hover:bg-secondary-container transition-all text-sm font-label-bold">
+      <span class="material-symbols-outlined">home</span>
+      Return to Home
+    </button>
+  </div>
+</header>
+
+<main class="flex-1 flex flex-row overflow-hidden no-print">
+  <div class="flex-1 flex flex-col bg-surface-container-lowest/50 p-6 overflow-hidden border-r border-outline-variant/30">
+    <div class="flex flex-col mb-4 gap-3 shrink-0">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div class="flex items-center gap-4">
+          <h1 class="font-headline-lg text-headline-lg text-primary">In-Store Checkout</h1>
+          <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+          <span class="text-body-md text-on-surface-variant" id="posItemCount">Loading inventory...</span>
+        </div>
+        
+        <form class="w-72 relative" autocomplete="off" onsubmit="event.preventDefault();">
+          <input type="search" id="posSearchInput" autocomplete="new-password" name="secure_search" data-lpignore="true" spellcheck="false" placeholder="Search products..." class="w-full px-4 py-2 rounded-full border border-outline-variant/40 bg-white text-sm focus:outline-none focus:border-secondary shadow-sm relative z-10" oninput="applyPosFilters()">
+        </form>
+
+      </div>
+      <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" id="posCategoryChips">
+        <button class="pos-category-btn px-4 py-1.5 rounded-full bg-primary text-on-primary font-label-bold whitespace-nowrap shadow-sm text-xs" data-category="all">All Products</button>
+        <button class="pos-category-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold hover:bg-secondary-container transition-colors whitespace-nowrap text-xs" data-category="indoor">Indoor Plants</button>
+        <button class="pos-category-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold hover:bg-secondary-container transition-colors whitespace-nowrap text-xs" data-category="outdoor">Outdoor Plants</button>
+        <button class="pos-category-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold hover:bg-secondary-container transition-colors whitespace-nowrap text-xs" data-category="pots">Pots</button>
+        <button class="pos-category-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold hover:bg-secondary-container transition-colors whitespace-nowrap text-xs" data-category="pebbles">Pebbles</button>
+        <button class="pos-category-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold hover:bg-secondary-container transition-colors whitespace-nowrap text-xs" data-category="supplies">Supplies</button>
+      </div>
+    </div>
+
+    <!-- Ultra-Compact Grid -->
+    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 overflow-y-auto pr-2 flex-1 items-start content-start" id="posProductGridContainer">
+      <div class="col-span-full flex flex-col items-center justify-center py-20 text-center opacity-50" id="posEmptyState" style="display:none;">
+        <span class="material-symbols-outlined text-[48px] mb-2">search_off</span>
+        <p class="font-body-md">No products match your search.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="cart-sidebar w-[440px] bg-surface flex flex-col shadow-2xl relative z-10 shrink-0 h-full overflow-hidden">
+    <div class="p-5 border-b border-outline-variant flex items-center justify-between shrink-0">
+      <h2 class="font-headline-md text-headline-md text-primary">Active Cart</h2>
+      <!-- Replaced standard clear button with custom modal prompt -->
+      <button class="text-xs font-label-bold text-error uppercase tracking-widest hover:bg-error-container/20 px-3 py-1.5 rounded-lg transition-colors" onclick="promptClearCart()">Clear All</button>
+    </div>
+    
+    <div class="flex-1 overflow-y-auto p-5" id="cart-items">
+      <div class="h-full flex flex-col items-center justify-center text-center opacity-40" id="empty-cart">
+        <span class="material-symbols-outlined text-[56px] mb-3">shopping_basket</span>
+        <p class="font-headline-md">Your cart is empty</p>
+        <p class="text-body-md mt-1 text-xs">Tap any product to add it to the order.</p>
+      </div>
+      <div class="space-y-3 hidden" id="cart-items-list"></div>
+    </div>
+
+    <div class="p-5 bg-surface-container-low border-t border-outline-variant shrink-0">
+      <div class="space-y-2 mb-4">
+        <div class="flex justify-between pt-1">
+          <span class="font-headline-md text-on-surface text-base">Total Amount</span>
+          <span class="font-headline-lg text-primary tracking-tight text-lg" id="total">₱0.00</span>
+        </div>
+      </div>
+      <div class="rounded-xl border border-secondary/15 bg-white px-3 py-2.5 mb-3 text-[11px] leading-relaxed text-on-surface-variant" role="note" aria-label="Checkout instructions">
+        <b class="text-primary">How to check out</b><br>
+        1. Search or choose a category, then tap products to add them.<br>
+        2. Review your cart and use + / − to change quantities.<br>
+        3. Tap Checkout. A staff member enters the PIN, then your receipt prints.
+      </div>
+      <button class="w-full py-3.5 rounded-2xl bg-secondary text-on-secondary font-headline-md shadow-lg hover:bg-primary active:scale-95 transition-all flex items-center justify-center gap-2 text-sm" onclick="processSale()">
+        <span class="material-symbols-outlined">payments</span>
+        Checkout & Print Receipt
+      </button>
+    </div>
+  </div>
+</main>
+
+<!-- THERMAL RECEIPT (Hidden on screen, visible on print) -->
+<div id="thermalReceipt" class="hidden bg-white p-4 text-black">
+  <div class="text-center border-b border-black pb-2 mb-2">
+    <h2 class="font-bold text-lg">KGG GARDEN</h2>
+    <p class="text-xs">Neopolitan Avenue, Fairview</p>
+    <p class="text-xs" id="receiptDate"></p>
+    <p class="text-xs font-bold mt-1" id="receiptRef"></p>
+  </div>
+  <table class="w-full text-xs text-left mb-2">
+    <thead><tr class="border-b border-black"><th class="pb-1">Item</th><th class="text-right pb-1">Total</th></tr></thead>
+    <tbody id="receiptItems"></tbody>
+  </table>
+  <div class="border-t border-black pt-2 text-right">
+    <p class="font-bold text-sm">TOTAL: <span id="receiptTotal"></span></p>
+  </div>
+  <p class="text-center text-xs mt-4">Thank you for growing with us!</p>
+</div>
+
+<!-- STAFF PIN MODAL -->
+<div id="posPinModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden items-center justify-center opacity-0 transition-opacity no-print">
+  <div class="bg-white rounded-[24px] p-8 w-full max-w-[400px] shadow-2xl text-center transform scale-95 transition-transform" id="posPinCard">
+    <span class="material-symbols-outlined text-4xl text-error mb-2">lock</span>
+    <h3 class="font-headline-md text-2xl text-primary mb-2">Staff Authorization</h3>
+    <p class="text-on-surface-variant text-sm mb-6">Enter admin PIN to complete this sale.</p>
+    <input type="password" id="checkoutPin" inputmode="numeric" autocomplete="off" class="w-full text-center tracking-[1em] text-3xl p-4 border-2 border-outline-variant/30 rounded-2xl outline-none mb-4 focus:border-primary" placeholder="••••" maxlength="8">
+    <p id="checkoutPinError" class="text-error text-xs font-bold mb-4 hidden bg-error-container/50 py-2 rounded-lg">Incorrect PIN. Try again.</p>
+    <div class="flex gap-3">
+      <button onclick="closePinModal()" class="flex-1 py-3 bg-surface-container text-on-surface-variant hover:bg-surface-dim rounded-xl font-label-bold text-sm transition-colors">Cancel</button>
+      <button onclick="executeSaleWithPin()" id="confirmSaleBtn" class="flex-1 py-3 bg-primary text-white hover:bg-forest-hover rounded-xl font-label-bold shadow-md text-sm transition-colors">Confirm Sale</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROFESSIONAL CONFIRMATION MODAL -->
+<div id="customConfirmModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] hidden items-center justify-center opacity-0 transition-opacity no-print">
+  <div class="bg-white rounded-[24px] p-8 w-full max-w-[400px] shadow-2xl text-center transform scale-95 transition-transform">
+    <span class="material-symbols-outlined text-4xl text-error mb-2">warning</span>
+    <h3 id="confirmModalTitle" class="font-headline-md text-2xl text-primary mb-2">Confirm Action</h3>
+    <p id="confirmModalText" class="text-on-surface-variant text-sm mb-6">Are you sure?</p>
+    <div class="flex gap-3">
+      <button onclick="closeConfirmModal()" class="flex-1 py-3 bg-surface-container text-on-surface-variant hover:bg-surface-dim rounded-xl font-label-bold text-sm transition-colors">Cancel</button>
+      <button onclick="executeConfirmedAction()" id="confirmModalBtn" class="flex-1 py-3 bg-error text-white hover:opacity-90 rounded-xl font-label-bold shadow-md text-sm transition-colors">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app_config.php"></script>
+<script>
+  const browserConfig = window.GREENPRINT_CONFIG || {};
+  const _supabase = window.supabase && browserConfig.supabaseUrl && browserConfig.supabaseAnonKey
+    ? window.supabase.createClient(browserConfig.supabaseUrl, browserConfig.supabaseAnonKey)
+    : null;
+  function escapeHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  const CATEGORY_META = {
+    indoor:   { label: 'Indoor Plants',  icon: 'potted_plant' },
+    outdoor:  { label: 'Outdoor Plants', icon: 'forest' },
+    pots:     { label: 'Pots',           icon: 'yard' },
+    pebbles:  { label: 'Pebbles',        icon: 'grain' },
+    supplies: { label: 'Supplies',       icon: 'compost' }
+  };
+
+  let PRODUCTS = [];
+  let posActiveCategory = 'all';
+  let cart = [];
+  
+  // Variables for custom confirmation modal
+  let actionToConfirm = null;
+  let itemToConfirm = null;
+
+  async function loadProductsFromBackend() {
+    try {
+      let rows = null;
+      if (_supabase) {
+        const { data, error } = await _supabase.from('products').select('id, name, category, price, stock, is_active, image_url').eq('is_active', true).gt('stock', 0).order('id');
+        if (!error) rows = data || [];
+        else console.warn('Supabase catalog read failed; trying the PHP catalog endpoint.', error.message);
+      }
+      if (rows === null) {
+        const response = await fetch('get_products.php', { headers: { Accept: 'application/json' } });
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Inventory could not be loaded.');
+        rows = result.data || [];
+      }
+      PRODUCTS = rows.map(p => ({
+        id: String(p.id), name: p.name, price: Number(p.price || 0), stock: Number(p.stock || 0),
+        category: p.category, categoryLabel: CATEGORY_META[p.category]?.label || 'General',
+        icon: CATEGORY_META[p.category]?.icon || 'potted_plant', isActive: p.is_active !== false, image_url: p.image_url
+      }));
+      renderAllPosCards();
+      applyPosFilters();
+    } catch (err) {
+      console.error('Failed to load products:', err);
+      const count = document.getElementById('posItemCount');
+      if (count) count.textContent = 'Inventory unavailable';
+    }
+  }
+
+  function formatPrice(n) {
+    return `₱${n.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+  }
+
+  function buildPosCardHtml(p) {
+    const imgSrc = /^IMAGE\//i.test(p.image_url || '') ? p.image_url : 'IMAGE/logo.png';
+    return '<button type="button" class="flex flex-col justify-between text-left bg-white rounded-xl p-3 border border-outline-variant/20 shadow-sm hover:shadow-md transition-all duration-200 transform hover:-translate-y-0.5 relative w-full h-28 shrink-0" data-id="' + escapeHtml(p.id) + '" data-category="' + escapeHtml(p.category) + '" data-name="' + escapeHtml(p.name) + '" data-price="' + p.price + '">' +
+      '<div class="flex items-center justify-between w-full pointer-events-none"><img src="' + escapeHtml(imgSrc) + '" onerror="this.src=&#39;IMAGE/logo.png&#39;" alt="" class="w-8 h-8 object-contain bg-surface-container rounded-md p-1 shadow-sm"><span class="bg-surface-container px-1.5 py-0.5 rounded text-[9px] font-label-bold text-on-surface-variant">Stock: ' + p.stock + '</span></div>' +
+      '<div class="w-full my-auto mt-2 pointer-events-none"><p class="font-label-bold text-on-surface text-xs line-clamp-2 leading-tight">' + escapeHtml(p.name) + '</p></div>' +
+      '<div class="flex items-center justify-between w-full pt-1 border-t border-outline-variant/10 pointer-events-none"><span class="text-[10px] text-on-surface-variant capitalize">' + escapeHtml(p.category) + '</span><span class="bg-primary text-on-primary px-2 py-0.5 rounded-full font-label-bold text-[10px]">' + formatPrice(p.price) + '</span></div></button>';
+  }
+
+  function renderAllPosCards() {
+    const grid = document.getElementById('posProductGridContainer');
+    const emptyState = document.getElementById('posEmptyState');
+    if (!grid || !emptyState) return;
+    
+    grid.querySelectorAll('button[data-id]').forEach(b => b.remove());
+    const html = PRODUCTS.map(buildPosCardHtml).join('');
+    emptyState.insertAdjacentHTML('beforebegin', html);
+  }
+
+  function applyPosFilters() {
+    const searchQuery = document.getElementById('posSearchInput').value.toLowerCase().trim();
+    const cards = document.querySelectorAll('#posProductGridContainer button[data-id]');
+    let visible = 0;
+
+    cards.forEach(card => {
+      const matchesCategory = posActiveCategory === 'all' || card.dataset.category === posActiveCategory;
+      const productName = card.dataset.name.toLowerCase();
+      const matchesSearch = productName.includes(searchQuery);
+
+      if (matchesCategory && matchesSearch) {
+        card.style.display = '';
+        visible++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    const posItemCount = document.getElementById('posItemCount');
+    if (posItemCount) posItemCount.textContent = `${visible} product${visible === 1 ? '' : 's'} available`;
+
+    const emptyState = document.getElementById('posEmptyState');
+    if (emptyState) emptyState.style.display = visible === 0 ? 'flex' : 'none';
+  }
+
+  const posGrid = document.getElementById('posProductGridContainer');
+  if (posGrid) {
+    posGrid.addEventListener('click', (e) => {
+      const card = e.target.closest('button[data-id]');
+      if (!card || card.style.display === 'none') return;
+      const product = PRODUCTS.find(p => p.id === card.dataset.id);
+      if (product) addToCart(product);
+    });
+  }
+
+  document.querySelectorAll('.pos-category-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.pos-category-btn').forEach(b => {
+        b.className = 'pos-category-btn px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-bold hover:bg-secondary-container transition-colors whitespace-nowrap text-xs';
+      });
+      btn.className = 'pos-category-btn px-4 py-1.5 rounded-full bg-primary text-on-primary font-label-bold whitespace-nowrap shadow-sm text-xs';
+      posActiveCategory = btn.dataset.category;
+      applyPosFilters();
+    });
+  });
+
+  // --- CUSTOM PROFESSIONAL MODALS LOGIC ---
+  function promptRemoveItem(id, name) {
+    actionToConfirm = 'remove';
+    itemToConfirm = id;
+    document.getElementById('confirmModalTitle').innerText = 'Remove Item';
+    document.getElementById('confirmModalText').innerText = `Are you sure you want to remove ${name} from the order?`;
+    document.getElementById('confirmModalBtn').innerText = 'Remove';
+    openConfirmModal();
+  }
+
+  function promptClearCart() {
+    if (cart.length === 0) return;
+    actionToConfirm = 'clear';
+    itemToConfirm = null;
+    document.getElementById('confirmModalTitle').innerText = 'Clear Entire Cart';
+    document.getElementById('confirmModalText').innerText = 'Are you sure you want to remove all items from the current order? This cannot be undone.';
+    document.getElementById('confirmModalBtn').innerText = 'Clear Cart';
+    openConfirmModal();
+  }
+
+  function openConfirmModal() {
+    const modal = document.getElementById('customConfirmModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => modal.classList.remove('opacity-0'), 10);
+  }
+
+  function closeConfirmModal() {
+    const modal = document.getElementById('customConfirmModal');
+    modal.classList.add('opacity-0');
+    setTimeout(() => { 
+      modal.classList.add('hidden'); 
+      modal.classList.remove('flex'); 
+      actionToConfirm = null;
+      itemToConfirm = null;
+    }, 200);
+  }
+
+  function executeConfirmedAction() {
+    if (actionToConfirm === 'remove' && itemToConfirm) {
+      cart = cart.filter(i => i.id !== itemToConfirm);
+      renderCart();
+    } else if (actionToConfirm === 'clear') {
+      cart = [];
+      renderCart();
+    }
+    closeConfirmModal();
+  }
+
+  // --- CART LOGIC ---
+  function addToCart(product) {
+    const existing = cart.find(item => item.id === product.id);
+    if (existing) {
+      if (existing.quantity >= product.stock) return;
+      existing.quantity++;
+    } else {
+      cart.push({ id: product.id, name: product.name, price: product.price, stock: product.stock, quantity: 1 });
+    }
+    renderCart();
+  }
+
+  function updateQuantity(id, delta) {
+    const item = cart.find(entry => entry.id === String(id));
+    if (item) {
+      if (delta < 0 && item.quantity === 1) {
+        promptRemoveItem(item.id, item.name);
+        return;
+      }
+      if (delta > 0 && item.quantity >= item.stock) return;
+      item.quantity += delta;
+      if (item.quantity <= 0) cart = cart.filter(entry => entry.id !== String(id));
+    }
+    renderCart();
+  }
+
+  function renderCart() {
+    const listContainer = document.getElementById('cart-items-list');
+    const emptyState = document.getElementById('empty-cart');
+    if (!listContainer || !emptyState) return;
+
+    if (cart.length === 0) {
+      listContainer.innerHTML = '';
+      listContainer.classList.add('hidden');
+      emptyState.classList.remove('hidden');
+    } else {
+      emptyState.classList.add('hidden');
+      listContainer.classList.remove('hidden');
+      listContainer.innerHTML = cart.map(item => `
+        <div class="flex items-center justify-between bg-surface-container-lowest p-2.5 rounded-xl border border-outline-variant/10">
+          <div class="flex-1 pr-2">
+            <p class="font-label-bold text-on-surface text-xs">${escapeHtml(item.name)}</p>
+            <p class="text-[11px] text-secondary font-medium">${formatPrice(item.price)} each</p>
+          </div>
+          <div class="flex items-center bg-surface-container rounded-full p-0.5 shadow-inner">
+            <button data-cart-action="dec" data-id="${escapeHtml(item.id)}" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white transition-colors">
+              <span class="material-symbols-outlined text-[14px]">remove</span>
+            </button>
+            <span class="w-7 text-center font-label-bold text-xs">${item.quantity}</span>
+            <button data-cart-action="inc" data-id="${escapeHtml(item.id)}" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white transition-colors">
+              <span class="material-symbols-outlined text-[14px]">add</span>
+            </button>
+          </div>
+          <div class="w-16 text-right pl-2">
+            <p class="font-label-bold text-on-surface text-xs">${formatPrice(item.price * item.quantity)}</p>
+          </div>
+        </div>
+      `).join('');
+    }
+    const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalEl = document.getElementById('total');
+    if (totalEl) totalEl.textContent = formatPrice(subtotal);
+  }
+
+  const cartList = document.getElementById('cart-items-list');
+  if (cartList) {
+    cartList.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-cart-action]');
+      if (!btn) return;
+      const delta = btn.dataset.cartAction === 'inc' ? 1 : -1;
+      updateQuantity(btn.dataset.id, delta);
+    });
+  }
+
+  // --- CHECKOUT FLOW (MODAL -> PIN -> RECEIPT) ---
+  function processSale() {
+    if (cart.length === 0) return;
+    const modal = document.getElementById('posPinModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => { 
+      modal.classList.remove('opacity-0'); 
+      document.getElementById('checkoutPin').focus(); 
+    }, 10);
+  }
+
+  function closePinModal() {
+    const modal = document.getElementById('posPinModal');
+    modal.classList.add('opacity-0');
+    setTimeout(() => { 
+      modal.classList.add('hidden'); 
+      modal.classList.remove('flex'); 
+      document.getElementById('checkoutPin').value = ''; 
+      document.getElementById('checkoutPinError').classList.add('hidden');
+    }, 200);
+  }
+
+  async function executeSaleWithPin() {
+    const pin = document.getElementById('checkoutPin').value;
+    document.getElementById('confirmSaleBtn').innerText = 'Processing...';
+    document.getElementById('confirmSaleBtn').disabled = true;
+    document.getElementById('checkoutPinError').classList.add('hidden');
+    try {
+      const response = await fetch('process_checkout.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ pin, cart: cart.map(item => ({ product_id: item.id, quantity: item.quantity })) })
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Checkout failed.');
+      document.getElementById('receiptDate').innerText = new Date(result.timestamp).toLocaleString();
+      document.getElementById('receiptRef').innerText = 'REF: ' + result.transaction_ref;
+      document.getElementById('receiptItems').innerHTML = result.items.map(item =>
+        '<tr><td class="py-1 pr-2">' + escapeHtml(item.product_name) + '<br><span class="text-[10px]">' + item.quantity + ' x ' + formatPrice(item.unit_price) + '</span></td><td class="text-right align-bottom">' + formatPrice(item.line_total) + '</td></tr>'
+      ).join('');
+      document.getElementById('receiptTotal').innerText = formatPrice(result.total_amount);
+      closePinModal();
+      const receipt = document.getElementById('thermalReceipt');
+      receipt.classList.remove('hidden');
+      window.addEventListener('afterprint', () => receipt.classList.add('hidden'), { once: true });
+      window.print();
+      setTimeout(() => receipt.classList.add('hidden'), 1000);
+      cart = [];
+      renderCart();
+      await loadProductsFromBackend();
+    } catch (err) {
+      console.error(err);
+      const error = document.getElementById('checkoutPinError');
+      error.textContent = err.message || 'Checkout failed. Please try again.';
+      error.classList.remove('hidden');
+    } finally {
+      document.getElementById('confirmSaleBtn').innerText = 'Confirm Sale';
+      document.getElementById('confirmSaleBtn').disabled = false;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', loadProductsFromBackend);
+</script>
+</body>
+</html>
