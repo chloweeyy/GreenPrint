@@ -99,6 +99,12 @@
   const errorText = document.getElementById('errorText');
   const submitBtn = document.getElementById('submitBtn');
 
+  // Netlify publishes this project as a static site plus Node functions; it
+  // does not execute PHP endpoints. Avoid trying to parse Netlify's HTML 404
+  // page as JSON when a staff member enters a passcode there.
+  const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+  const isXampp = localHosts.has(window.location.hostname) || window.location.hostname.endsWith('.localhost');
+
   visibilityToggle.addEventListener('click', () => {
     const type = passcode.getAttribute('type') === 'password' ? 'text' : 'password';
     passcode.setAttribute('type', type);
@@ -108,6 +114,12 @@
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     errorMessage.classList.add('hidden');
+    if (!isXampp) {
+      errorMessage.classList.remove('hidden');
+      errorMessage.classList.add('flex');
+      errorText.textContent = 'Admin sign-in is not enabled on the Netlify deployment yet. The admin login requires the PHP backend running in XAMPP.';
+      return;
+    }
     submitBtn.disabled = true;
     submitBtn.style.opacity = '0.7';
     submitBtn.textContent = 'Verifying...';
@@ -117,7 +129,15 @@
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ passcode: passcode.value.trim() })
       });
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        throw new Error(responseText.trim().startsWith('<')
+          ? 'The PHP login endpoint did not run. Open GreenPrint through XAMPP (http://localhost/GreenPrint/), not the static Netlify site.'
+          : 'The login service returned an empty or invalid response. Check that Apache and PHP are running.');
+      }
       if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Access denied.');
       sessionStorage.setItem('kgg_admin_csrf', result.csrf_token);
       sessionStorage.setItem('kgg_admin_logged_in', 'true');

@@ -209,6 +209,7 @@ export default async function processCheckout(request) {
   if (!client) return json({ status: "error", message: "Checkout could not connect to the store database. No stock was changed." }, 503);
 
   let inTransaction = false;
+  let operationStage = "inspect database schema";
   try {
     const schema = await inspectSchema(client);
     const transactionIdColumn = firstColumn(schema, "transactions", ["id", "transaction_id"]);
@@ -224,11 +225,13 @@ export default async function processCheckout(request) {
     if (!transactionIdColumn) missing.push(["transactions", "id or transaction_id"]);
     if (missing.length) throw checkoutError("Checkout database tables are missing required columns. Please ask an administrator to check the database setup.", 503);
 
+    operationStage = "begin sale transaction";
     await client.query("BEGIN");
     inTransaction = true;
 
     let adminId = null;
     if (adminIdColumn && has(schema, "admin_users", "is_active")) {
+      operationStage = "find active staff account";
       const adminResult = await client.query(
         `SELECT ${quoteIdentifier(adminIdColumn)} AS admin_id FROM admin_users WHERE is_active IS TRUE ORDER BY ${quoteIdentifier(adminIdColumn)} LIMIT 1`
       );
@@ -238,6 +241,7 @@ export default async function processCheckout(request) {
     const lockedProducts = [];
     let subtotalCents = 0;
     for (const [productId, quantity] of quantities) {
+      operationStage = "lock and validate product stock";
       const productResult = await client.query(
         "SELECT id, name, price, stock, is_active FROM products WHERE id = $1 FOR UPDATE",
         [productId]
@@ -253,6 +257,7 @@ export default async function processCheckout(request) {
     }
 
     const subtotal = (subtotalCents / 100).toFixed(2);
+    operationStage = "create transaction reference";
     const reference = transactionReference();
     const transactionValues = {
       transaction_ref: reference,
@@ -264,6 +269,7 @@ export default async function processCheckout(request) {
     if (has(schema, "transactions", "admin_id") && adminId !== null) transactionValues.admin_id = adminId;
     if (has(schema, "transactions", "payment_method")) transactionValues.payment_method = "Cash";
 
+    operationStage = "insert transaction record";
     const transactionResult = await insertRow(client, "transactions", transactionValues, transactionIdColumn);
     const transactionId = transactionResult.rows[0]?.[transactionIdColumn];
     const timestamp = transactionTimeColumn
@@ -271,6 +277,7 @@ export default async function processCheckout(request) {
       : new Date().toISOString();
 
     for (const product of lockedProducts) {
+      operationStage = "insert transaction items";
       await insertRow(client, "transaction_items", {
         transaction_id: transactionId,
         product_id: product.id,
@@ -280,6 +287,7 @@ export default async function processCheckout(request) {
         line_total: (product.lineTotalCents / 100).toFixed(2)
       });
 
+      operationStage = "deduct product stock";
       const updatedAtSql = has(schema, "products", "updated_at") ? ", updated_at = NOW()" : "";
       const stockUpdate = await client.query(
         `UPDATE products SET stock = stock - $1${updatedAtSql} WHERE id = $2 AND stock >= $1`,
@@ -288,6 +296,7 @@ export default async function processCheckout(request) {
       if (stockUpdate.rowCount !== 1) throw checkoutError(`${product.name} no longer has enough stock. Please try again.`);
 
       if (["product_id", "change_amount", "reason"].every((column) => has(schema, "inventory_logs", column))) {
+        operationStage = "write inventory log";
         const inventoryLog = { product_id: product.id, change_amount: -product.quantity, reason: `Sale ${reference}` };
         if (has(schema, "inventory_logs", "created_at")) inventoryLog.created_at = new Date();
         await insertRow(client, "inventory_logs", inventoryLog);
@@ -295,6 +304,7 @@ export default async function processCheckout(request) {
     }
 
     if (adminId !== null && ["admin_id", "action", "details"].every((column) => has(schema, "admin_logs", column))) {
+      operationStage = "write admin audit log";
       await insertRow(client, "admin_logs", {
         admin_id: adminId,
         action: "checkout",
@@ -302,6 +312,7 @@ export default async function processCheckout(request) {
       });
     }
 
+    operationStage = "commit sale transaction";
     await client.query("COMMIT");
     inTransaction = false;
     attemptsByClient.delete(pinResult.key);
@@ -322,7 +333,15 @@ export default async function processCheckout(request) {
   } catch (error) {
     if (inTransaction) await client.query("ROLLBACK").catch(() => {});
     if (error.status) return json({ status: "error", message: error.message }, error.status);
-    console.error("GreenPrint checkout database operation failed.", error.code || "database error");
+    const diagnostic = String(error?.message || "Unknown error")
+      .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "[redacted connection string]")
+      .replace(/[\r\n\t]+/g, " ")
+      .slice(0, 400);
+    console.error("GreenPrint checkout database operation failed.", {
+      stage: operationStage,
+      code: error?.code || error?.name || "unknown",
+      message: diagnostic
+    });
     return json({ status: "error", message: "Checkout could not be completed. No stock was changed." }, 500);
   } finally {
     client.release();
