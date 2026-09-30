@@ -18,13 +18,21 @@ function json(body, status = 200) {
 
 function databasePool() {
   if (pool) return pool;
+  const sslMode = (process.env.GREENPRINT_DB_SSLMODE || "require").trim().toLowerCase();
+  const databaseCa = process.env.GREENPRINT_DB_CA_CERT || "";
   pool = new Pool({
     host: process.env.GREENPRINT_DB_HOST,
     port: Number(process.env.GREENPRINT_DB_PORT || 5432),
     database: process.env.GREENPRINT_DB_NAME || "postgres",
     user: process.env.GREENPRINT_DB_USER,
     password: process.env.GREENPRINT_DB_PASSWORD,
-    ssl: { rejectUnauthorized: true },
+    // Match the configured PostgreSQL sslmode. `require` still encrypts the
+    // connection, but Supabase's pooler certificate chain may not be in the
+    // Netlify runtime trust store. For certificate verification, provide the
+    // project CA and use verify-ca or verify-full.
+    ssl: ["verify-ca", "verify-full"].includes(sslMode)
+      ? { ca: databaseCa, rejectUnauthorized: true }
+      : { rejectUnauthorized: false },
     max: 2,
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 10_000
@@ -149,6 +157,13 @@ export default async function processCheckout(request) {
   ].filter((name) => !process.env[name]);
   if (missingConfig.length) {
     return json({ status: "error", message: "Checkout is not configured on the server. Please ask staff for help." }, 503);
+  }
+  const sslMode = (process.env.GREENPRINT_DB_SSLMODE || "require").trim().toLowerCase();
+  if (!["require", "verify-ca", "verify-full"].includes(sslMode)) {
+    return json({ status: "error", message: "Checkout has an invalid database SSL mode. Please ask an administrator to check Netlify settings." }, 503);
+  }
+  if (["verify-ca", "verify-full"].includes(sslMode) && !process.env.GREENPRINT_DB_CA_CERT) {
+    return json({ status: "error", message: "The database CA certificate is missing from Netlify settings. Please ask an administrator to check the SSL configuration." }, 503);
   }
 
   let payload;
