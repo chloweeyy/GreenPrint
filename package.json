@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "bcryptjs": "2.4.3",
     "pg": "8.16.3"
   }
 }

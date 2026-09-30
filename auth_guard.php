@@ -28,7 +28,15 @@ if ($adminId === false || ($lastActivity > 0 && time() - $lastActivity > 21600))
     echo json_encode(['status' => 'error', 'message' => 'Admin session expired. Sign in again.']);
     exit;
 }
-$activeAdmin = $pdo->prepare('SELECT 1 FROM admin_users WHERE id = :id AND is_active IS TRUE');
+$adminColumns = $pdo->query("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'admin_users'")->fetchAll(PDO::FETCH_COLUMN);
+$adminIdColumn = in_array('id', $adminColumns, true) ? 'id' : (in_array('admin_id', $adminColumns, true) ? 'admin_id' : null);
+if ($adminIdColumn === null || !in_array('is_active', $adminColumns, true)) {
+    http_response_code(503);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['status' => 'error', 'message' => 'Admin account columns are missing.']);
+    exit;
+}
+$activeAdmin = $pdo->prepare('SELECT 1 FROM admin_users WHERE "' . $adminIdColumn . '" = :id AND is_active IS TRUE');
 $activeAdmin->execute([':id' => $adminId]);
 if (!$activeAdmin->fetchColumn()) {
     $_SESSION = [];

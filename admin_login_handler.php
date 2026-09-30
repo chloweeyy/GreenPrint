@@ -33,7 +33,13 @@ if ($passcode === '' || strlen($passcode) > 128) {
 }
 
 try {
-    $users = $pdo->query('SELECT id, passcode_hash FROM admin_users WHERE is_active IS TRUE AND passcode_hash IS NOT NULL')->fetchAll();
+    $adminColumns = $pdo->query("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'admin_users'")->fetchAll(PDO::FETCH_COLUMN);
+    $adminIdColumn = in_array('id', $adminColumns, true) ? 'id' : (in_array('admin_id', $adminColumns, true) ? 'admin_id' : null);
+    if ($adminIdColumn === null || !in_array('passcode_hash', $adminColumns, true) || !in_array('is_active', $adminColumns, true)) {
+        throw new RuntimeException('Admin account columns are missing.');
+    }
+    $quotedAdminId = '"' . $adminIdColumn . '"';
+    $users = $pdo->query("SELECT {$quotedAdminId} AS admin_id, passcode_hash FROM admin_users WHERE is_active IS TRUE AND passcode_hash IS NOT NULL")->fetchAll();
     $matched = null;
     foreach ($users as $user) {
         if (password_verify($passcode, (string) $user['passcode_hash'])) {
@@ -55,13 +61,13 @@ try {
 
     session_regenerate_id(true);
     $_SESSION['admin_logged_in'] = true;
-    $_SESSION['admin_id'] = (string) $matched['id'];
+    $_SESSION['admin_id'] = (string) $matched['admin_id'];
     $_SESSION['admin_last_activity'] = time();
     $_SESSION['login_attempts'] = 0;
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     try {
         $log = $pdo->prepare('INSERT INTO admin_logs (admin_id, action, details) VALUES (:admin_id, :action, :details)');
-        $log->execute([':admin_id' => $matched['id'], ':action' => 'login', ':details' => 'Admin session opened']);
+        $log->execute([':admin_id' => $matched['admin_id'], ':action' => 'login', ':details' => 'Admin session opened']);
     } catch (Throwable $ignored) {
         error_log('GreenPrint could not write admin login audit record.');
     }

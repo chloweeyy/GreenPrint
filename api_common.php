@@ -45,7 +45,14 @@ function require_admin(PDO $pdo, bool $checkCsrf = false): array
         $_SESSION = [];
         json_response(['status' => 'error', 'message' => 'Admin session expired. Sign in again.'], 401);
     }
-    $stmt = $pdo->prepare('SELECT id, username, role, is_active FROM admin_users WHERE id = :id');
+    $columns = $pdo->query("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'admin_users'")->fetchAll(PDO::FETCH_COLUMN);
+    $idColumn = in_array('id', $columns, true) ? 'id' : (in_array('admin_id', $columns, true) ? 'admin_id' : null);
+    if ($idColumn === null || !in_array('is_active', $columns, true)) {
+        json_response(['status' => 'error', 'message' => 'Admin account columns are missing.'], 503);
+    }
+    $roleColumn = in_array('role', $columns, true) ? 'role' : "'admin' AS role";
+    $usernameColumn = in_array('username', $columns, true) ? 'username' : "'' AS username";
+    $stmt = $pdo->prepare('SELECT "' . $idColumn . '" AS id, ' . $usernameColumn . ', ' . $roleColumn . ', is_active FROM admin_users WHERE "' . $idColumn . '" = :id');
     $stmt->execute([':id' => $adminId]);
     $admin = $stmt->fetch();
     $active = $admin && in_array($admin['is_active'], [true, 1, '1', 't', 'true'], true);

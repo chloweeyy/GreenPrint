@@ -297,19 +297,41 @@ export default async function processCheckout(request) {
 
       if (["product_id", "change_amount", "reason"].every((column) => has(schema, "inventory_logs", column))) {
         operationStage = "write inventory log";
-        const inventoryLog = { product_id: product.id, change_amount: -product.quantity, reason: `Sale ${reference}` };
-        if (has(schema, "inventory_logs", "created_at")) inventoryLog.created_at = new Date();
-        await insertRow(client, "inventory_logs", inventoryLog);
+        await client.query("SAVEPOINT greenprint_inventory_log");
+        try {
+          const inventoryLog = { product_id: product.id, change_amount: -product.quantity, reason: `Sale ${reference}` };
+          if (has(schema, "inventory_logs", "created_at")) inventoryLog.created_at = new Date();
+          await insertRow(client, "inventory_logs", inventoryLog);
+          await client.query("RELEASE SAVEPOINT greenprint_inventory_log");
+        } catch (error) {
+          await client.query("ROLLBACK TO SAVEPOINT greenprint_inventory_log");
+          await client.query("RELEASE SAVEPOINT greenprint_inventory_log");
+          console.error("GreenPrint checkout inventory history write failed: " + JSON.stringify({
+            code: error?.code || error?.name || "unknown",
+            message: String(error?.message || "Unknown error").replace(/[\\r\\n\\t]+/g, " ").slice(0, 300)
+          }));
+        }
       }
     }
 
     if (adminId !== null && ["admin_id", "action", "details"].every((column) => has(schema, "admin_logs", column))) {
       operationStage = "write admin audit log";
-      await insertRow(client, "admin_logs", {
-        admin_id: adminId,
-        action: "checkout",
-        details: JSON.stringify({ transaction_ref: reference, transaction_id: String(transactionId), item_count: lockedProducts.length, total: subtotal })
-      });
+      await client.query("SAVEPOINT greenprint_admin_audit");
+      try {
+        await insertRow(client, "admin_logs", {
+          admin_id: adminId,
+          action: "checkout",
+          details: JSON.stringify({ transaction_ref: reference, transaction_id: String(transactionId), item_count: lockedProducts.length, total: subtotal })
+        });
+        await client.query("RELEASE SAVEPOINT greenprint_admin_audit");
+      } catch (error) {
+        await client.query("ROLLBACK TO SAVEPOINT greenprint_admin_audit");
+        await client.query("RELEASE SAVEPOINT greenprint_admin_audit");
+        console.error("GreenPrint checkout audit history write failed: " + JSON.stringify({
+          code: error?.code || error?.name || "unknown",
+          message: String(error?.message || "Unknown error").replace(/[\\r\\n\\t]+/g, " ").slice(0, 300)
+        }));
+      }
     }
 
     operationStage = "commit sale transaction";
@@ -337,11 +359,11 @@ export default async function processCheckout(request) {
       .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "[redacted connection string]")
       .replace(/[\r\n\t]+/g, " ")
       .slice(0, 400);
-    console.error("GreenPrint checkout database operation failed.", {
+    console.error("GreenPrint checkout database operation failed: " + JSON.stringify({
       stage: operationStage,
       code: error?.code || error?.name || "unknown",
       message: diagnostic
-    });
+    }));
     return json({ status: "error", message: "Checkout could not be completed. No stock was changed." }, 500);
   } finally {
     client.release();

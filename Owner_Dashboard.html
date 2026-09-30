@@ -486,6 +486,12 @@
   const ADMIN_CSRF = sessionStorage.getItem('kgg_admin_csrf') || '';
   let ALL_ADMIN_PRODUCTS = [];
   let csrfToken = ADMIN_CSRF;
+  const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+  const isXampp = localHosts.has(window.location.hostname) || window.location.hostname.endsWith('.localhost');
+  const adminApiUrl = (action) => isXampp
+    ? 'admin_api.php?action=' + encodeURIComponent(action)
+    : '/.netlify/functions/admin-api?action=' + encodeURIComponent(action);
+  const adminSessionUrl = isXampp ? 'session_status.php' : '/.netlify/functions/admin-auth?action=session';
   const zones = [
     { id: 'zone1', name: 'Zone 01 — Indoor', schedule: '06:00 AM daily', temp: '--', humidity: '--', watering: false },
     { id: 'zone2', name: 'Zone 02 — Outdoor', schedule: '07:00 AM daily', temp: '--', humidity: '--', watering: false }
@@ -499,8 +505,13 @@
       options.headers['X-CSRF-Token'] = csrfToken;
       options.body = JSON.stringify(payload);
     }
-    const response = await fetch('admin_api.php?action=' + encodeURIComponent(action), options);
-    const result = await response.json();
+    const response = await fetch(adminApiUrl(action), options);
+    const text = await response.text();
+    let result;
+    try { result = JSON.parse(text); }
+    catch { throw new Error(text.trim().startsWith('<')
+      ? 'The admin service returned an HTML error page. Confirm the Netlify functions deployed successfully.'
+      : 'The admin service returned an empty or invalid response. Check the Netlify function logs.'); }
     if (response.status === 401) {
       sessionStorage.removeItem('kgg_admin_csrf');
       window.location.href = 'Admin_login.html';
@@ -526,8 +537,13 @@
 
   async function initializeDashboard() {
     try {
-      const response = await fetch('session_status.php', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
-      const session = await response.json();
+      const response = await fetch(adminSessionUrl, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
+      const responseText = await response.text();
+      let session;
+      try { session = JSON.parse(responseText); }
+      catch { throw new Error(responseText.trim().startsWith('<')
+        ? 'Admin authentication returned an HTML error page. Confirm the Netlify functions deployed successfully.'
+        : 'Admin authentication returned an empty or invalid response.'); }
       if (!response.ok || session.status !== 'success') { window.location.href = 'Admin_login.html'; return; }
       csrfToken = session.csrf_token || csrfToken;
       sessionStorage.setItem('kgg_admin_csrf', csrfToken);
@@ -830,7 +846,7 @@
 
   async function adminSignOut() {
     try {
-      const response = await fetch('admin_logout.php', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, credentials: 'same-origin' });
+      const response = await fetch(isXampp ? 'admin_logout.php' : '/.netlify/functions/admin-auth?action=logout', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, credentials: 'same-origin' });
       if (!response.ok) throw new Error('Sign out failed.');
     } catch (error) { console.error(error); }
     sessionStorage.removeItem('kgg_admin_csrf');
