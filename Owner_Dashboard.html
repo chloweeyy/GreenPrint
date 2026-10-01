@@ -43,7 +43,6 @@
     width: 100%;
     min-height: 100vh;
     overflow-x: hidden;
-    touch-action: pan-y pinch-zoom;
     -webkit-overflow-scrolling: touch;
     background:
       radial-gradient(1100px 500px at 85% -10%, rgba(127,167,135,.10), transparent),
@@ -52,6 +51,10 @@
     font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
   }
+  /* Keep the document as the page's vertical scroll surface. Explicitly
+     scrolling the root restores standard mouse-wheel behavior on desktop. */
+  html { height: 100%; overflow-y: auto; }
+  body { min-height: 100%; height: auto; overflow-y: visible; touch-action: auto; }
   .display{font-family:'Playfair Display',serif;}
 
   header{

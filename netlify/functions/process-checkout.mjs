@@ -99,9 +99,8 @@ function amountToCents(value) {
 }
 
 function transactionReference() {
-  const timeZone = process.env.GREENPRINT_TIMEZONE || "Asia/Manila";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
+  const configuredTimeZone = process.env.GREENPRINT_TIMEZONE || "Asia/Manila";
+  const formatOptions = {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -109,7 +108,17 @@ function transactionReference() {
     minute: "2-digit",
     second: "2-digit",
     hourCycle: "h23"
-  }).formatToParts(new Date()).reduce((result, part) => {
+  };
+  let formatter;
+  try {
+    formatOptions.timeZone = configuredTimeZone;
+    formatter = new Intl.DateTimeFormat("en-CA", formatOptions);
+  } catch {
+    formatOptions.timeZone = "Asia/Manila";
+    formatter = new Intl.DateTimeFormat("en-CA", formatOptions);
+    console.warn("GreenPrint checkout received an invalid GREENPRINT_TIMEZONE; using Asia/Manila.");
+  }
+  const parts = formatter.formatToParts(new Date()).reduce((result, part) => {
     result[part.type] = part.value;
     return result;
   }, {});
@@ -267,7 +276,9 @@ export default async function processCheckout(request) {
     if (transactionTimeColumn) transactionValues[transactionTimeColumn] = new Date();
     if (has(schema, "transactions", "discount_amount")) transactionValues.discount_amount = "0.00";
     if (has(schema, "transactions", "admin_id") && adminId !== null) transactionValues.admin_id = adminId;
-    if (has(schema, "transactions", "payment_method")) transactionValues.payment_method = "Cash";
+    // This POS has no tender selector. Let the database use its configured
+    // default (or NULL) instead of writing a hard-coded label that may not
+    // match the store's payment_method CHECK constraint.
 
     operationStage = "insert transaction record";
     const transactionResult = await insertRow(client, "transactions", transactionValues, transactionIdColumn);
