@@ -313,28 +313,28 @@
   function getDimensions(name, category) {
     const lowerName = String(name || '').toLowerCase().replace(/[″”]/g, '"');
     const inchMatch = lowerName.match(/(\d+(?:\.\d+)?)\s*-?\s*(?:inch(?:es)?\b|in\b|["'])/i);
-    const potInches = inchMatch ? Number(inchMatch[1]) : null;
-    let width = 120; 
-    let zIndex = 20; 
-
-    if (category === 'pots') zIndex = 10;
-    else if (category === 'indoor' || category === 'outdoor') zIndex = 20;
-    else if (category === 'pebbles' || category === 'supplies') zIndex = 30;
-
-    if (category === 'pots' && potInches !== null) {
-      // Match the plan scale (48 px per meter), allowing for transparent padding in product PNGs.
-      const potWidths = { 5: 13, 6: 16, 8: 22, 10: 26, 12: 32, 15: 39, 16: 42, 20: 52, 40: 104 };
-      width = potWidths[potInches] || Math.max(13, Math.min(156, Math.round(potInches * 2.6)));
-    } else if (lowerName.includes('40 inch')) width = 260;
-    else if (lowerName.includes('20 inch') || lowerName.includes('extra large')) width = 220;
-    else if (lowerName.includes('16 inch')) width = 190;
-    else if (lowerName.includes('15 inch') || lowerName.includes('large')) width = 175;
-    else if (lowerName.includes('12 inch')) width = 150;
-    else if (lowerName.includes('10 inch') || lowerName.includes('medium')) width = 125;
-    else if (lowerName.includes('8 inch')) width = 100;
-    else if (lowerName.includes('6 inch') || lowerName.includes('small')) width = 80;
-    else if (lowerName.includes('5 inch')) width = 70;
-
+    const meterPixels = window.matchMedia('(max-width: 850px)').matches ? 36 : 48;
+    const sizeTier = /\b(extra\s*large|xl)\b/.test(lowerName) ? 'extra large'
+      : /\blarge\b/.test(lowerName) ? 'large'
+        : /\bmedium\b/.test(lowerName) ? 'medium'
+          : /\bsmall\b/.test(lowerName) ? 'small'
+            : /\b(bird of paradise|horse tail|pinugo|yellow bell|pandanus|cypress|eugenia|thai bamboo|alucaria|araucaria|cochinchinensis|bucida|golden betcha|hawaiian ti|san francisco|ti plant|selloum)\b/.test(lowerName) ? 'large'
+              : /\b(aglaonema|calathea|peace lily|orchid|anthurium|bromeliad|ruellia|forget-me-not|yellow irish|bakya|picarra|copea|zig zag)\b/.test(lowerName) ? 'small' : 'medium';
+    let plantSpreadMeters = ({ small: 0.22, medium: 0.34, large: 0.56, 'extra large': 0.78 }[sizeTier] || 0.34);
+    if (/\b(bird of paradise|horse tail|pandanus|cypress|thai bamboo|alucaria|araucaria|hawaiian ti|ti plant|san francisco)\b/.test(lowerName)) plantSpreadMeters *= 0.82;
+    else if (/\b(selloum|bucida|eugenia|santan|bottle brush|pandakaki|triangularis|maki|havetia|golden betcha)\b/.test(lowerName)) plantSpreadMeters *= 1.12;
+    const namedPotInches = inchMatch ? Number(inchMatch[1])
+      : /\b(extra\s*large|xl)\b/.test(lowerName) ? 20
+        : /\blarge\b/.test(lowerName) ? 16
+          : /\bmedium\b/.test(lowerName) ? 10
+            : /\bsmall\b/.test(lowerName) ? 6 : /assorted/.test(lowerName) ? 12 : 10;
+    let width;
+    if (category === 'pots') width = Math.max(10, Math.round(namedPotInches * 0.0254 * meterPixels / 0.47));
+    else if (category === 'indoor' || category === 'outdoor') width = Math.max(10, Math.round(plantSpreadMeters * meterPixels));
+    else if (category === 'pebbles') width = Math.max(8, Math.round((inchMatch ? Number(inchMatch[1]) * 0.0254 : 0.28) * meterPixels));
+    else if (category === 'supplies') width = Math.max(10, Math.round(0.25 * meterPixels));
+    else width = Math.max(10, Math.round(0.3 * meterPixels));
+    const zIndex = category === 'pots' ? 10 : (category === 'pebbles' || category === 'supplies') ? 30 : 20;
     return { width, zIndex };
   }
 
@@ -499,6 +499,6 @@
 
   document.addEventListener('DOMContentLoaded', loadInventory);
 </script>
-<script src="garden_visualizer_3d.js?v=20261001-pot-size-scale-v3"></script>
+<script src="garden_visualizer_3d.js?v=20261001-real-scale-zoom-v5"></script>
 </body>
 </html>
