@@ -23,15 +23,20 @@ html, body {
 /* THERMAL PRINTER STYLES */
 @media print {
   @page { size: 80mm auto; margin: 0; }
-  body * { visibility: hidden; }
-  #thermalReceipt, #thermalReceipt * { visibility: visible; }
+  html, body { width:auto!important; height:auto!important; min-height:0!important; margin:0!important; padding:0!important; overflow:visible!important; background:#fff!important; }
+  body { display:block!important; }
+  body > *:not(#thermalReceipt) { display:none!important; }
   #thermalReceipt {
-    position: absolute; left: 0; top: 0;
-    width: 80mm; 
-    margin: 0; padding: 10px;
-    font-family: monospace; font-size: 12px; color: black;
+    display:block!important; position:static!important; visibility:visible!important;
+    width:80mm!important; max-width:80mm!important; min-height:0!important;
+    box-sizing:border-box!important; margin:0!important; padding:2mm 3mm!important;
+    background:#fff!important; color:#000!important;
+    font-family:monospace!important; font-size:9pt!important; line-height:1.3!important;
+    -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important;
   }
-  .no-print { display: none !important; }
+  #thermalReceipt * { visibility:visible!important; }
+  #thermalReceipt table { width:100%!important; border-collapse:collapse!important; }
+  #thermalReceipt th, #thermalReceipt td, #thermalReceipt p, #thermalReceipt h2 { color:#000!important; }
 }
 
 @media (max-width: 1024px) {
@@ -152,6 +157,14 @@ html, body {
 <div id="mobileCartScrim" class="fixed inset-0 z-[70] hidden bg-black/40 no-print" onclick="closeMobileCart()"></div>
 <button id="mobileCartButton" type="button" class="fixed bottom-5 right-5 z-[65] hidden min-h-14 rounded-full bg-primary px-5 text-white shadow-xl no-print" onclick="toggleMobileCart()"><span class="material-symbols-outlined align-middle">shopping_cart</span> Cart <span id="mobileCartCount" class="ml-1 rounded-full bg-white px-2 py-0.5 text-xs font-bold text-primary">0</span></button>
 
+<div id="emptyCartWarning" class="fixed inset-0 z-[110] hidden items-center justify-center bg-black/55 p-4 no-print" role="alertdialog" aria-modal="true" aria-labelledby="emptyCartWarningTitle" aria-describedby="emptyCartWarningText">
+ <div class="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
+  <span class="material-symbols-outlined mb-2 text-5xl text-secondary">shopping_basket</span>
+  <h2 id="emptyCartWarningTitle" class="mb-2 font-headline-md text-2xl text-primary">Your cart is empty</h2>
+  <p id="emptyCartWarningText" class="mb-5 text-sm leading-relaxed text-on-surface-variant">Add at least one item before checking out.</p>
+  <button type="button" class="min-h-12 w-full rounded-xl bg-primary px-4 py-3 font-bold text-white" onclick="closeEmptyCartWarning()">Got it</button>
+ </div>
+</div>
 <div id="checkoutHelpModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/55 p-4 no-print" role="dialog" aria-modal="true" aria-labelledby="checkoutHelpTitle">
  <div class="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="checkoutHelpTitle" class="mb-3 font-headline-md text-2xl text-primary">How to check out</h2><ol class="mb-5 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-on-surface-variant"><li>Tap a product to add it to your cart. Use search or the category buttons to find items.</li><li>Open <b>Cart</b> to review your items and quantities.</li><li>Tap <b>Checkout</b>. A staff member enters the authorization PIN.</li><li>Choose a payment method. For cash, enter the amount received and check the change and receipt preview.</li><li>Ask the staff member to confirm and print your receipt.</li></ol><button class="min-h-12 w-full rounded-2xl bg-primary px-4 py-3 font-bold text-white" onclick="closeCheckoutHelp()">Got it</button></div>
 </div>
@@ -505,7 +518,7 @@ html, body {
     return result;
   }
   function processSale() {
-    if (!cart.length) return;
+    if (!cart.length) { openEmptyCartWarning(); return; }
     closeMobileCart();
     const modal = document.getElementById('posPinModal'); modal.classList.remove('hidden'); modal.classList.add('flex');
     setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('checkoutPin').focus(); }, 10);
@@ -567,8 +580,8 @@ html, body {
       document.getElementById('receiptTender').innerText='Received: '+formatPrice(p.received);
       document.getElementById('receiptChange').innerText='Change: '+formatPrice(p.change);
       closePaymentModal();
-      const receipt=document.getElementById('thermalReceipt');receipt.classList.remove('hidden');window.addEventListener('afterprint',()=>receipt.classList.add('hidden'),{once:true});window.print();setTimeout(()=>receipt.classList.add('hidden'),1200);
-      cart=[];renderCart();await loadProductsFromBackend();
+      const receipt=document.getElementById('thermalReceipt');receipt.classList.remove('hidden');void receipt.offsetHeight;window.addEventListener('afterprint',()=>receipt.classList.add('hidden'),{once:true});try{if(typeof window.print==='function')window.print();else console.warn('Printing is unavailable in this browser.');}catch(printError){console.warn('Receipt is saved, but the browser could not open printing.',printError);}
+      cart=[];renderCart();try{await loadProductsFromBackend()}catch(refreshError){console.warn('Sale completed, but inventory refresh failed.',refreshError)}
     } catch(err) { error.textContent=err.message||'Checkout failed. No stock was changed.';error.classList.remove('hidden'); }
     finally { button.disabled=false;button.textContent='Confirm payment & print receipt'; }
   }
@@ -576,6 +589,8 @@ html, body {
   function closeImagePreview(){const modal=document.getElementById('imagePreviewModal');modal.classList.add('hidden');modal.classList.remove('flex')}
   function toggleMobileCart(){const sidebar=document.querySelector('.cart-sidebar'),scrim=document.getElementById('mobileCartScrim');sidebar.classList.add('mobile-open');scrim.classList.add('visible')}
   function closeMobileCart(){document.querySelector('.cart-sidebar')?.classList.remove('mobile-open');document.getElementById('mobileCartScrim')?.classList.remove('visible')}
+  function openEmptyCartWarning(){const m=document.getElementById('emptyCartWarning');m.classList.remove('hidden');m.classList.add('flex')}
+  function closeEmptyCartWarning(){const m=document.getElementById('emptyCartWarning');m.classList.add('hidden');m.classList.remove('flex')}
   function openCheckoutHelp(){const m=document.getElementById('checkoutHelpModal');m.classList.remove('hidden');m.classList.add('flex')}
   function closeCheckoutHelp(){const m=document.getElementById('checkoutHelpModal');m.classList.add('hidden');m.classList.remove('flex')}
   const mobileCartButton=document.getElementById('mobileCartButton');

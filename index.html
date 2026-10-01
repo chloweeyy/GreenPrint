@@ -29,6 +29,22 @@
   .kiosk-card:active {
     transform: scale(0.96);
   }
+
+  /* Keep the three customer actions visible as large landscape touch targets on kiosk tablets. */
+  @media (orientation: landscape) and (min-width: 650px) and (max-height: 1000px) {
+    html, body { width:100%; height:100dvh; min-height:0; overflow:hidden!important; }
+    body { padding:10px clamp(12px,2.5vw,32px)!important; justify-content:center; gap:clamp(6px,1.2vh,12px); }
+    body > div:first-of-type { flex-direction:row!important; align-items:center; gap:clamp(10px,2vw,24px)!important; margin:0!important; }
+    body > div:first-of-type > div:first-child { width:clamp(92px,12vw,150px)!important; max-width:none!important; padding:0!important; }
+    body > div:first-of-type > div:last-child { margin:0!important; padding:0!important; }
+    body > div:first-of-type h1 { font-size:clamp(22px,3vw,36px)!important; line-height:1.12!important; }
+    body > div:last-of-type { width:100%; max-width:1200px; flex:1 1 auto; min-height:0; flex-direction:row!important; align-items:stretch; justify-content:center; gap:clamp(10px,1.5vw,20px)!important; padding:0!important; }
+    .kiosk-card { min-width:0; min-height:0!important; padding:clamp(12px,2.4vh,24px)!important; border-radius:24px!important; justify-content:center; }
+    .kiosk-card > div:first-child { width:clamp(50px,8vh,76px)!important; height:clamp(50px,8vh,76px)!important; margin-bottom:clamp(8px,1.5vh,14px)!important; }
+    .kiosk-card > div:first-child .material-symbols-outlined { font-size:clamp(30px,4.5vh,44px)!important; }
+    .kiosk-card h2 { font-size:clamp(17px,2vw,24px)!important; line-height:1.15!important; margin-bottom:6px!important; }
+    .kiosk-card p { font-size:clamp(11px,1.15vw,15px)!important; line-height:1.4!important; }
+  }
 </style>
 <link rel="stylesheet" href="kiosk-touch.css?v=20261001-tablet">
 </head>
