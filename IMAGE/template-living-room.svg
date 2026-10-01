@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <pattern id="wood-floor" width="84" height="44" patternUnits="userSpaceOnUse">
+      <rect width="84" height="44" fill="#c9a57d"/>
+      <path d="M0 2h84M42 2v42" stroke="#ad875f" stroke-width="2"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="760" fill="#e9ece7"/>
+  <rect x="130" y="72" width="940" height="616" fill="url(#wood-floor)" stroke="#7c827d" stroke-width="16"/>
+  <rect x="138" y="80" width="924" height="66" fill="#f4f2eb"/>
+  <rect x="218" y="95" width="250" height="38" fill="#b8d8dc" stroke="#f8f7f2" stroke-width="8"/>
+  <rect x="732" y="95" width="250" height="38" fill="#b8d8dc" stroke="#f8f7f2" stroke-width="8"/>
+  <g>
+    <rect x="244" y="304" width="224" height="150" rx="28" fill="#a97859" stroke="#79573f" stroke-width="12"/>
+    <rect x="270" y="321" width="172" height="48" rx="8" fill="#ceb08c"/>
+    <rect x="714" y="304" width="224" height="150" rx="28" fill="#758b82" stroke="#53675f" stroke-width="12"/>
+    <rect x="740" y="321" width="172" height="48" rx="8" fill="#b6c6b9"/>
+  </g>
+  <rect x="520" y="324" width="160" height="112" rx="14" fill="#805c42" stroke="#e8d4b7" stroke-width="10"/>
+  <circle cx="600" cy="380" r="16" fill="#e9d5ba"/>
+</svg>

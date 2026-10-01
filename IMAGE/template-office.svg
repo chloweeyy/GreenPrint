@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <pattern id="office-floor" width="86" height="42" patternUnits="userSpaceOnUse">
+      <rect width="86" height="42" fill="#bca17e"/>
+      <path d="M0 2h86M43 2v40" stroke="#a78a67" stroke-width="2"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="760" fill="#e9ece7"/>
+  <rect x="125" y="68" width="950" height="625" fill="url(#office-floor)" stroke="#777e78" stroke-width="16"/>
+  <rect x="133" y="76" width="934" height="62" fill="#f4f2eb"/>
+  <rect x="425" y="87" width="350" height="38" rx="5" fill="#add5dc" stroke="#fff" stroke-width="8"/>
+  <rect x="168" y="262" width="150" height="232" rx="6" fill="#756854" stroke="#5f594a" stroke-width="8"/>
+  <path d="M184 282h118M184 345h118M184 408h118M184 471h118" stroke="#d1c6ad" stroke-width="8"/>
+  <rect x="492" y="185" width="216" height="128" rx="10" fill="#35464c" stroke="#24363b" stroke-width="8"/>
+  <rect x="509" y="202" width="182" height="94" rx="4" fill="#8eb8bd"/>
+  <rect x="360" y="350" width="480" height="100" rx="8" fill="#b9865c" stroke="#795c43" stroke-width="10"/>
+  <path d="M392 450v83M808 450v83" stroke="#74553c" stroke-width="16"/>
+  <circle cx="600" cy="568" r="42" fill="#d0d1ca" stroke="#747c77" stroke-width="9"/>
+  <path d="M600 610v27m-54 0h108" stroke="#68736c" stroke-width="12"/>
+</svg>

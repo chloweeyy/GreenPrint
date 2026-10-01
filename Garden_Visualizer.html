@@ -25,8 +25,8 @@
   }
 
   .template-card {
-    min-width: 120px;
-    height: 80px;
+    min-width: 112px;
+    height: 76px;
     border-radius: 12px;
     background-color: #e2e3e0;
     background-size: 100% 100%;
@@ -52,6 +52,7 @@
   }
   .canvas-item:active { cursor: grabbing; transform: scale(1.05); z-index: 999 !important; }
   .canvas-item img { pointer-events: none; height: auto; }
+  #inventoryList { touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 
   /* Pot Layer: Heavy floor shadow */
   .type-pots img { filter: drop-shadow(0px 25px 15px rgba(0,0,0,0.6)); }
@@ -85,17 +86,23 @@
   }
   .canvas-item:hover .delete-btn { opacity: 1; }
 
-  @media (max-width: 1024px) {
-    html, body { height: auto !important; min-height: 100vh; overflow-y: auto !important; overflow-x: hidden !important; }
-    header { padding: 12px 16px !important; }
-    main { flex-direction: column !important; overflow-y: visible !important; height: auto !important; padding: 16px !important; }
-    #left-panel { height: min(72vh, 720px) !important; min-height: 580px !important; flex: none !important; }
-    #right-panel { width: 100% !important; height: 600px !important; flex: none !important; margin-bottom: 20px !important; }
+  @media (max-width: 1100px) and (min-width: 701px) {
+    header { padding: 8px 14px !important; height: 64px !important; }
+    main { gap: 10px !important; padding: 10px !important; min-height: 0; }
+    #left-panel { min-width: 0; padding: 12px !important; }
+    #right-panel { width: min(34vw, 330px) !important; min-width: 245px; }
+    #canvasArea { min-height: 0; }
+    .template-card { min-width: 96px; height: 66px; }
   }
-  @media (max-width: 560px) {
-    #left-panel { min-height: 500px !important; height: 68vh !important; padding: 12px !important; }
-    #right-panel { padding: 14px !important; }
-    .template-card { min-width: 106px; height: 72px; }
+  @media (max-width: 700px) {
+    html, body { height: auto !important; min-height: 100vh; overflow-y: auto !important; overflow-x: hidden !important; }
+    header { padding: 10px 12px !important; height: auto !important; min-height: 62px; }
+    header .brand > div:first-child { width: 72px !important; }
+    main { flex-direction: column !important; overflow: visible !important; height: auto !important; padding: 10px !important; }
+    #left-panel { height: auto !important; min-height: 0 !important; flex: none !important; padding: 12px !important; }
+    #canvasArea { height: clamp(320px, 58vh, 460px) !important; min-height: 320px !important; flex: none !important; }
+    #right-panel { width: 100% !important; height: min(60vh, 560px) !important; min-height: 390px; flex: none !important; margin-bottom: 18px !important; }
+    .template-card { min-width: 100px; height: 70px; }
   }
 </style>
 <link rel="stylesheet" href="kiosk-touch.css?v=20261001-tablet">
@@ -114,7 +121,7 @@
   </div>
   <a href="index.html" class="flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-container-high hover:bg-secondary-container hover:text-on-secondary-container transition-all text-xs md:text-sm font-label-bold shrink-0">
     <span class="material-symbols-outlined text-secondary">home</span>
-    <span class="hidden sm:inline">Return to Home</span>
+    <span class="hidden sm:inline">Return to Home Screen</span>
   </a>
 </header>
 
@@ -129,23 +136,18 @@
       </div>
       <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
         
-        <div class="template-card" onclick="loadTemplate('empty_room', this)" style="background-image: url('IMAGE/garden-pool-courtyard.svg');">
-          <div class="template-label">Pool Courtyard</div>
-        </div>
-        
-        <div class="template-card" onclick="loadTemplate('patio', this)" style="background-image: url('IMAGE/garden-cottage-patio.svg');">
-          <div class="template-label">Cottage Patio</div>
-        </div>
-        
-        <div class="template-card" onclick="loadTemplate('lawn', this)" style="background-image: url('IMAGE/garden-kitchen-garden.svg?v=20261001-seedling-clean');">
-          <div class="template-label">Kitchen Garden</div>
-        </div>
+        <button type="button" class="template-card" data-scene="living-room" onclick="loadTemplate('living-room', this)" style="background-image:url('IMAGE/template-living-room.svg?v=20261001-clean-scenes')"><span class="template-label">Living room</span></button>
+        <button type="button" class="template-card" data-scene="office" onclick="loadTemplate('office', this)" style="background-image:url('IMAGE/template-office.svg?v=20261001-clean-scenes')"><span class="template-label">Office</span></button>
+        <button type="button" class="template-card" data-scene="bedroom" onclick="loadTemplate('bedroom', this)" style="background-image:url('IMAGE/template-bedroom.svg?v=20261001-clean-scenes')"><span class="template-label">Bedroom</span></button>
+        <button type="button" class="template-card" data-scene="backyard" onclick="loadTemplate('backyard', this)" style="background-image:url('IMAGE/planner-backyard-empty.svg?v=20261001-clean-scenes')"><span class="template-label">Backyard</span></button>
+        <button type="button" class="template-card" data-scene="garden" onclick="loadTemplate('garden', this)" style="background-image:url('IMAGE/planner-kitchen-garden-empty.svg?v=20261001-clean-scenes')"><span class="template-label">Garden</span></button>
+        <button type="button" class="template-card" data-scene="resort" onclick="loadTemplate('resort', this)" style="background-image:url('IMAGE/planner-resort-empty.svg?v=20261001-clean-scenes')"><span class="template-label">Resort</span></button>
 
       </div>
     </div>
 
     <div class="mb-2 shrink-0 rounded-xl border border-secondary/15 bg-[#f2f7f1] px-3 py-2 text-[11px] leading-relaxed text-[#395446]">
-      <b class="text-primary">How to use:</b> 1) Choose a real setting. 2) Tap an item to place it, or drag it from inventory. 3) Drag a plant or pebbles onto a pot to combine them. Select a finished pot to separate or replace any layer.
+      <b class="text-primary">How to use:</b> Choose a room or outdoor scene with open space for your products, then drag items from Live Inventory onto the plan. Drop a plant or pebbles on a pot to layer them; select the pot to separate or replace parts.
     </div>
 
     <div id="canvasArea" class="flex-1 bg-surface-container-low rounded-2xl border-2 border-dashed border-outline-variant/50 relative overflow-hidden flex items-center justify-center transition-all duration-500">
@@ -290,13 +292,13 @@
 
     let bgUrl = '';
     if (themeType === 'empty_room') {
-        bgUrl = 'IMAGE/garden-pool-courtyard.svg';
+        bgUrl = 'IMAGE/planner-resort-empty.svg?v=20261001-clean-scenes';
         currentThemeName = "Pool Courtyard Garden";
     } else if (themeType === 'patio') {
-        bgUrl = 'IMAGE/garden-cottage-patio.svg';
+        bgUrl = 'IMAGE/planner-backyard-empty.svg?v=20261001-clean-scenes';
         currentThemeName = "Cottage Patio Garden";
     } else if (themeType === 'lawn') {
-        bgUrl = 'IMAGE/garden-kitchen-garden.svg?v=20261001-seedling-clean';
+        bgUrl = 'IMAGE/planner-kitchen-garden-empty.svg?v=20261001-clean-scenes';
         currentThemeName = "Kitchen Garden";
     }
 
@@ -499,6 +501,13 @@
 
   document.addEventListener('DOMContentLoaded', loadInventory);
 </script>
-<script src="garden_visualizer_3d.js?v=20261001-real-scale-zoom-v5"></script>
+<div id="visualizerGuide" class="fixed inset-0 z-[120] hidden items-center justify-center bg-black/55 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="visualizerGuideTitle">
+  <div class="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
+    <div class="mb-3 flex items-center gap-3"><span class="material-symbols-outlined rounded-full bg-secondary-container p-3 text-secondary">yard</span><div><p class="text-xs font-bold uppercase tracking-widest text-secondary">Quick start</p><h2 id="visualizerGuideTitle" class="font-headline-md text-2xl text-primary">How to use the Garden Planner</h2></div></div>
+    <ol class="mb-6 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-on-surface-variant"><li>Pick a room or outdoor place template.</li><li>Drag a plant, pot, or pebbles from Live Inventory onto the plan. Tap an item in the inventory to place it at the center.</li><li>Drag a plant or pebbles directly onto a pot to combine them. Select the planter to separate, replace, or remove a layer.</li><li>Use the zoom buttons to inspect products. When zoomed in, drag empty space with a finger or mouse to pan around the whole scene. The 2D view is top-down; Angled View adds perspective.</li><li>For outdoor plans, loose pebbles can also be placed directly on the ground.</li></ol>
+    <button id="closeVisualizerGuide" type="button" class="min-h-12 w-full rounded-2xl bg-primary px-5 py-3 font-bold text-white">Start planning</button>
+  </div>
+</div>
+<script src="garden_visualizer_3d.js?v=20261001-clean-scenes-v15"></script>
 </body>
 </html>
