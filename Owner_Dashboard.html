@@ -89,9 +89,9 @@
   #clock{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;}
 
   main{
-    max-width:1240px;
+    max-width:none;
     width:100%;
-    margin:0 auto;
+    margin:0;
     padding:30px 40px 70px;
     flex:1 1 auto;
     min-height:0;
@@ -101,6 +101,7 @@
     touch-action:pan-y;
     -webkit-overflow-scrolling:touch;
   }
+  #viewDashboard,#viewInventory,#viewSales,main>footer{width:100%;max-width:1240px;margin-left:auto;margin-right:auto;}
 
   @media (max-width: 1024px) {
     header {
@@ -548,6 +549,8 @@
   const ADMIN_CSRF = sessionStorage.getItem('kgg_admin_csrf') || '';
   let ALL_ADMIN_PRODUCTS = [];
   let CURRENT_SALES_ROWS = [];
+  let SALES_DATE_RANGE_INITIALIZED = false;
+  let SALES_EARLIEST_DATE = '2000-01-01';
   let csrfToken = ADMIN_CSRF;
   const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
   const isXampp = localHosts.has(window.location.hostname) || window.location.hostname.endsWith('.localhost');
@@ -714,7 +717,7 @@
       '<button type="button" class="btn" data-product-action="stock-in" data-product-id="' + Number(product.id) +
       '" style="padding:5px 9px;font-size:11px;background:var(--sage-pale);color:var(--forest);">Add stock</button> ' +
       '<button type="button" class="btn" data-product-action="stock-out" data-product-id="' + Number(product.id) +
-      '" style="padding:5px 9px;font-size:11px;background:var(--marigold-pale);color:var(--marigold);">Remove stock</button> ' +
+      '" style="padding:5px 9px;font-size:11px;background:var(--marigold-pale);color:var(--marigold);">Deduct stock</button> ' +
       '<button type="button" class="btn" data-product-action="edit" data-product-id="' + Number(product.id) +
       '" style="padding:5px 9px;font-size:11px;background:var(--water-pale);color:var(--water);">Edit</button> ' +
       '<button type="button" class="btn" data-product-action="toggle" data-product-id="' + Number(product.id) +
@@ -748,10 +751,10 @@
     const adding = direction === 'in';
     document.getElementById('stockAdjustmentProductId').value = String(product.id);
     document.getElementById('stockAdjustmentDirection').value = direction;
-    document.getElementById('stockAdjustmentTitle').textContent = adding ? 'Add stock' : 'Remove stock';
+    document.getElementById('stockAdjustmentTitle').textContent = adding ? 'Add stock' : 'Deduct stock';
     document.getElementById('stockAdjustmentProduct').textContent = product.name + ' · Current stock: ' + Number(product.stock);
-    document.getElementById('stockAdjustmentReason').value = adding ? 'Stock received' : 'Stock removed';
-    document.getElementById('stockAdjustmentSubmit').textContent = adding ? 'Add quantity' : 'Remove quantity';
+    document.getElementById('stockAdjustmentReason').value = adding ? 'Stock received' : 'Plant died / damaged / lost';
+    document.getElementById('stockAdjustmentSubmit').textContent = adding ? 'Add quantity' : 'Deduct quantity';
     document.getElementById('stockAdjustmentSubmit').style.background = adding ? 'var(--forest)' : 'var(--coral)';
     document.getElementById('stockAdjustmentQuantity').value = '';
     document.getElementById('stockAdjustmentModal').style.display = 'flex';
@@ -815,8 +818,33 @@
   async function loadSalesReports() {
     const body = document.getElementById('salesTableBody');
     const summary = document.getElementById('salesReportSummary');
-    const from = document.getElementById('salesFromDate').value;
-    const to = document.getElementById('salesToDate').value;
+    const fromInput = document.getElementById('salesFromDate');
+    const toInput = document.getElementById('salesToDate');
+    const today = salesDateKey(new Date());
+    fromInput.max = today;
+    toInput.max = today;
+    try {
+      if (!SALES_DATE_RANGE_INITIALIZED) {
+        const allTransactions = await adminRequest('transactions') || [];
+        const dates = allTransactions.map(item => salesDateKey(item.created_at)).filter(Boolean).sort();
+        SALES_EARLIEST_DATE = dates[0] || '2000-01-01';
+        if (SALES_EARLIEST_DATE > today) SALES_EARLIEST_DATE = today;
+        SALES_DATE_RANGE_INITIALIZED = true;
+      }
+    } catch (error) {
+      summary.textContent = error.message || 'Sales report could not be loaded.';
+      body.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;">Sales data unavailable.</td></tr>';
+      return false;
+    }
+    if (!fromInput.value) fromInput.value = SALES_EARLIEST_DATE;
+    if (!toInput.value) toInput.value = today;
+    const from = fromInput.value;
+    const to = toInput.value;
+    if (from > today || to > today) {
+      summary.textContent = 'Report dates cannot be later than today.';
+      body.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;">Choose dates up to today.</td></tr>';
+      return false;
+    }
     if (from && to && from > to) {
       summary.textContent = 'The from date must be on or before the to date.';
       body.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;">Choose a valid date range.</td></tr>';
@@ -843,9 +871,20 @@
   }
 
   function clearSalesDateFilter() {
-    document.getElementById('salesFromDate').value = '';
-    document.getElementById('salesToDate').value = '';
+    document.getElementById('salesFromDate').value = SALES_EARLIEST_DATE;
+    document.getElementById('salesToDate').value = salesDateKey(new Date());
     loadSalesReports();
+  }
+
+  function salesDateKey(value) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (!Number.isFinite(date.getTime())) return '';
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(date);
+    const part = type => parts.find(item => item.type === type)?.value || '';
+    return part('year') + '-' + part('month') + '-' + part('day');
   }
 
   function csvCell(value) {
