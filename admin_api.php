@@ -47,7 +47,8 @@ try {
                 $columnQuery->execute();
                 $availableColumns = $columnQuery->fetchAll(PDO::FETCH_COLUMN);
                 $timeColumn = null;
-                foreach (['created_at', 'transaction_date', 'timestamp'] as $candidate) {
+                // Prefer the sale's recorded date; created_at can be later for imported/backfilled transactions.
+                foreach (['transaction_date', 'created_at', 'timestamp'] as $candidate) {
                     if (in_array($candidate, $availableColumns, true)) { $timeColumn = $candidate; break; }
                 }
                 if (($from !== '' || $to !== '') && $timeColumn === null) {

@@ -41,7 +41,8 @@ async function readAction(client, schema, action, query = new URLSearchParams())
       result = await client.query("SELECT zone_id, schedule_time FROM watering_schedules ORDER BY zone_id");
       break;
     case "transactions": {
-      const timeColumn = firstColumn(schema, "transactions", ["created_at", "transaction_date", "timestamp"]);
+      // Prefer the sale's recorded date; created_at can be later for imported/backfilled transactions.
+      const timeColumn = firstColumn(schema, "transactions", ["transaction_date", "created_at", "timestamp"]);
       const from = query.get("from") || "";
       const to = query.get("to") || "";
       if ((from && !validDate(from)) || (to && !validDate(to))) {

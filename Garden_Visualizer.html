@@ -322,8 +322,9 @@
     else if (category === 'pebbles' || category === 'supplies') zIndex = 30;
 
     if (category === 'pots' && potInches !== null) {
-      const potWidths = { 5: 65, 6: 78, 8: 104, 10: 130, 12: 156, 15: 195, 16: 208, 20: 260, 40: 260 };
-      width = potWidths[potInches] || Math.max(52, Math.min(260, Math.round(potInches * 13)));
+      // Match the plan scale (48 px per meter), allowing for transparent padding in product PNGs.
+      const potWidths = { 5: 13, 6: 16, 8: 22, 10: 26, 12: 32, 15: 39, 16: 42, 20: 52, 40: 104 };
+      width = potWidths[potInches] || Math.max(13, Math.min(156, Math.round(potInches * 2.6)));
     } else if (lowerName.includes('40 inch')) width = 260;
     else if (lowerName.includes('20 inch') || lowerName.includes('extra large')) width = 220;
     else if (lowerName.includes('16 inch')) width = 190;
@@ -498,6 +499,6 @@
 
   document.addEventListener('DOMContentLoaded', loadInventory);
 </script>
-<script src="garden_visualizer_3d.js?v=20261001-pot-size-scale-v2"></script>
+<script src="garden_visualizer_3d.js?v=20261001-pot-size-scale-v3"></script>
 </body>
 </html>
