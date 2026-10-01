@@ -29,7 +29,7 @@ $normalizeName = static function (string $value): string {
 };
 
 try {
-    $inventory = $pdo->query("SELECT id, sku, name, category, price, stock FROM products WHERE is_active IS TRUE AND stock > 0 AND category IN ('indoor', 'outdoor') ORDER BY category, name")->fetchAll();
+    $inventory = $pdo->query("SELECT id, sku, name, category, price, stock FROM products WHERE is_active IS TRUE AND stock > 0 AND lower(category) IN ('indoor', 'outdoor') ORDER BY category, name")->fetchAll();
     $careRecords = $pdo->query('SELECT common_name, scientific_name, care_instructions, sunlight, watering, soil_type, ideal_temperature, is_toxic FROM plant_care_info ORDER BY common_name')->fetchAll();
     $inventoryText = json_encode(array_map(static fn($item) => ['name' => $item['name'], 'category' => $item['category']], $inventory), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     $careText = json_encode($careRecords, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

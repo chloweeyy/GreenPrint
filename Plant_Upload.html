@@ -14,6 +14,23 @@
   body {
     background: radial-gradient(1400px 800px at 50% -10%, rgba(127,167,135,.2), transparent), #f9faf6;
   }
+  @media (min-width:701px) and (orientation:landscape) {
+    body { height:100vh; min-height:0; overflow:hidden; }
+    header { height:64px; padding:8px 18px!important; flex:none; }
+    header img { max-width:82px; }
+    main { height:calc(100vh - 64px); max-height:calc(100vh - 64px); padding:12px 20px!important; gap:16px!important; align-items:stretch!important; overflow:auto; }
+    #scannerCameraPanel,#scannerResultsPanel { min-height:0!important; padding:14px!important; border-radius:22px!important; }
+    #scannerCameraFrame { flex:1; min-height:0; aspect-ratio:auto; margin-bottom:10px!important; }
+    #scannerHowTo { padding:8px 12px!important; margin-bottom:10px!important; font-size:11px; }
+    #scannerResultsPanel { overflow:auto; }
+  }
+  @media (max-width:700px) {
+    header { padding:10px 12px!important; }
+    header > div:first-child > div:first-child { width:70px!important; }
+    header a { min-height:44px; white-space:nowrap; }
+    main { padding:12px!important; gap:14px!important; }
+    #scannerCameraPanel,#scannerResultsPanel { padding:14px!important; border-radius:22px!important; }
+  }
 </style>
 <link rel="stylesheet" href="kiosk-touch.css?v=20261001-tablet">
 </head>
@@ -31,7 +48,7 @@
       </div>
     </div>
     <a href="index.html" class="flex items-center gap-2 px-4 py-2 rounded-full bg-surface-container hover:bg-surface-dim font-label-bold text-xs text-primary transition-colors">
-      <span class="material-symbols-outlined text-[16px]">home</span> Return to Home
+      <span class="material-symbols-outlined text-[16px]">home</span> Return to Home Screen
     </a>
   </header>
 
@@ -39,27 +56,28 @@
   <main class="flex-1 max-w-[1400px] w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
     
     <!-- Left Column: Camera Viewfinder Box -->
-    <div class="bg-white p-6 rounded-[32px] border border-outline-variant/30 shadow-lg flex flex-col items-center">
-      <div class="w-full rounded-2xl border border-secondary/15 bg-[#f2f7f1] px-4 py-3 mb-4 text-left text-xs leading-relaxed text-on-surface-variant" role="note" aria-label="Plant scanner instructions">
+    <div id="scannerCameraPanel" class="bg-white p-6 rounded-[32px] border border-outline-variant/30 shadow-lg flex flex-col items-center">
+      <div id="scannerHowTo" class="w-full rounded-2xl border border-secondary/15 bg-[#f2f7f1] px-4 py-3 mb-4 text-left text-xs leading-relaxed text-on-surface-variant" role="note" aria-label="Plant scanner instructions">
         <b class="text-primary">How to identify a plant</b><br>
         1. Allow camera access when asked, then point the camera at one plant or leaf.<br>
         2. Keep the plant well-lit and in focus, then tap <b>Start Scan</b>.<br>
         3. Read the care tips and use <b>Shop available plants</b> to browse matches.
       </div>
-      <div class="relative w-full aspect-[4/3] rounded-[24px] overflow-hidden bg-black shadow-inner mb-6">
+      <div id="scannerCameraFrame" class="relative w-full aspect-[4/3] rounded-[24px] overflow-hidden bg-black shadow-inner mb-4">
         <video id="cameraFeed" autoplay playsinline muted class="w-full h-full object-cover"></video>
         <canvas id="captureCanvas" class="hidden"></canvas>
+        <button id="cameraFlipBtn" type="button" class="absolute bottom-3 right-3 min-h-11 rounded-full bg-black/65 px-4 text-xs font-bold text-white shadow" aria-label="Switch to front camera">Switch to front camera</button>
         <div class="absolute top-4 left-4 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full text-xs font-label-bold text-white flex items-center gap-2">
           <span class="h-2 w-2 rounded-full bg-error animate-pulse"></span> Live Feed
         </div>
       </div>
-      <button onclick="processScan()" id="scanBtn" class="w-full py-4 bg-primary text-white hover:bg-forest-hover rounded-2xl font-label-bold text-lg shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer">
+      <button onclick="processScan()" id="scanBtn" class="w-full min-h-12 py-3 bg-primary text-white hover:bg-forest-hover rounded-2xl font-label-bold text-lg shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer">
         <span class="material-symbols-outlined text-[24px]">document_scanner</span> Start Scan
       </button>
     </div>
 
     <!-- Right Column: AI Results & Diagnostics Box -->
-    <div class="bg-white rounded-[32px] p-8 border border-outline-variant/30 shadow-lg flex flex-col justify-between min-h-[500px]">
+    <div id="scannerResultsPanel" class="bg-white rounded-[32px] p-8 border border-outline-variant/30 shadow-lg flex flex-col justify-between min-h-[500px]">
       
       <!-- Initial / Empty State -->
       <div id="emptyState" class="flex flex-col items-center justify-center text-center my-auto py-12">
@@ -140,34 +158,57 @@ const video = document.getElementById('cameraFeed');
     const emptyState = document.getElementById('emptyState');
     const loadingState = document.getElementById('loadingState');
     const resultsData = document.getElementById('resultsData');
+    const cameraFlipBtn = document.getElementById('cameraFlipBtn');
+    let currentFacing = 'environment';
+    let cameraStarting = false;
 
-    let SHOP_INVENTORY = [];
-
-    async function startCamera() {
+    async function startCamera(facing = currentFacing) {
+      if (cameraStarting) return;
+      cameraStarting = true;
+      currentFacing = facing;
       try {
-        let stream;
-        try {
-          // Try rear-facing camera first (for mobile/tablets)
-          stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
-          });
-        } catch (e) {
-          // Fallback to standard webcam for laptop/PC testing
-          stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
-          });
-        }
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access requires HTTPS or localhost and a supported browser.');
+        const oldStream = video.srcObject;
+        if (oldStream) oldStream.getTracks().forEach(track => track.stop());
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
         video.srcObject = stream;
         await video.play();
+        if (cameraFlipBtn) cameraFlipBtn.textContent = facing === 'environment' ? 'Switch to front camera' : 'Switch to back camera';
       } catch (err) {
         console.error("Camera access denied or unavailable:", err);
-        alert("Camera error: Please ensure you have granted camera permissions in your browser.");
+        showScannerError(err.message || 'Allow camera access in your browser and try again.');
+      } finally {
+        cameraStarting = false;
       }
     }
 
+    function showScannerError(message) {
+      loadingState.classList.add('hidden');
+      emptyState.classList.remove('hidden');
+      const copy = emptyState.querySelector('p');
+      if (copy) copy.textContent = message;
+    }
+
+    async function readJsonResponse(response) {
+      const text = await response.text();
+      try { return JSON.parse(text); }
+      catch {
+        if (/<\s*!doctype|<\s*html/i.test(text)) throw new Error('The scanner service is not configured on this deployment. Please ask staff to check the Netlify function.');
+        throw new Error('The scanner returned an unreadable response. Please try again.');
+      }
+    }
+
+    if (cameraFlipBtn) cameraFlipBtn.addEventListener('click', () => {
+      currentFacing = currentFacing === 'environment' ? 'user' : 'environment';
+      startCamera(currentFacing);
+    });
+
     async function processScan() {
       if (!video.srcObject) {
-        alert("Camera is not active. Please grant camera permissions.");
+        showScannerError("Camera is not active. Allow camera access, then try again.");
         return;
       }
 
@@ -186,8 +227,10 @@ const video = document.getElementById('cameraFeed');
         if (!imageBlob) throw new Error('The plant image could not be prepared.');
         const formData = new FormData();
         formData.append('plant_image', imageBlob, 'plant-scan.jpg');
-        const response = await fetch('identify_plant.php', { method: 'POST', body: formData, headers: { Accept: 'application/json' } });
-        const rawData = await response.json();
+        const onXampp = ['localhost', '127.0.0.1', '::1'].includes(location.hostname) || location.hostname.endsWith('.localhost');
+        const endpoint = onXampp ? 'identify_plant.php' : '/.netlify/functions/identify-plant';
+        const response = await fetch(endpoint, { method: 'POST', body: formData, headers: { Accept: 'application/json' } });
+        const rawData = await readJsonResponse(response);
         if (!response.ok || rawData.status !== 'success' || !rawData.data) throw new Error(rawData.message || 'Plant identification is unavailable.');
         const plantData = rawData.data;
 
@@ -234,9 +277,8 @@ const video = document.getElementById('cameraFeed');
 
       } catch (err) {
         console.error(err);
-        alert('Server Error: ' + err.message);
+        showScannerError(err.message || 'Plant identification is temporarily unavailable. Please try again.');
         loadingState.classList.add('hidden');
-        emptyState.classList.remove('hidden');
       } finally {
         scanBtn.disabled = false;
         scanBtn.innerHTML = `<span class="material-symbols-outlined text-[24px]">document_scanner</span> Start Scan`;
@@ -253,6 +295,9 @@ const video = document.getElementById('cameraFeed');
 
     document.addEventListener('DOMContentLoaded', () => {
       startCamera();
+    });
+    window.addEventListener('pagehide', () => {
+      if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
     });
   </script>
 </body>

@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -10,6 +10,7 @@ const JSON_HEADERS = {
 const ATTEMPT_LIMIT = 5;
 const LOCKOUT_MS = 60_000;
 const attemptsByClient = new Map();
+const usedAuthorizationTokens = new Map();
 let pool;
 
 function json(body, status = 200) {
@@ -153,26 +154,68 @@ function checkoutError(message, status = 422) {
   return error;
 }
 
+function cartFingerprint(cart) {
+  const normalized = cart.map((line) => [Number(line.product_id), Number(line.quantity)])
+    .sort((a, b) => a[0] - b[0]);
+  return createHmac("sha256", process.env.GREENPRINT_DB_PASSWORD || process.env.GREENPRINT_CHECKOUT_PIN)
+    .update(JSON.stringify(normalized)).digest("hex");
+}
+
+function issueAuthorizationToken(request, cart) {
+  const expires = Date.now() + 5 * 60_000;
+  const nonce = randomBytes(18).toString("hex");
+  const payload = Buffer.from(JSON.stringify({
+    expires,
+    nonce,
+    client: clientKey(request),
+    cart: cartFingerprint(cart)
+  })).toString("base64url");
+  const signature = createHmac("sha256", process.env.GREENPRINT_DB_PASSWORD || process.env.GREENPRINT_CHECKOUT_PIN)
+    .update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function consumeAuthorizationToken(request, token, cart) {
+  if (typeof token !== "string" || token.length > 2048) return false;
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra) return false;
+  const secret = process.env.GREENPRINT_DB_PASSWORD || process.env.GREENPRINT_CHECKOUT_PIN;
+  const expected = createHmac("sha256", secret).update(payload).digest();
+  let actual;
+  try { actual = Buffer.from(signature, "base64url"); } catch { return false; }
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return false;
+  let claims;
+  try { claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); } catch { return false; }
+  const now = Date.now();
+  for (const [nonce, expiry] of usedAuthorizationTokens) if (expiry <= now) usedAuthorizationTokens.delete(nonce);
+  if (!claims.nonce || claims.expires <= now || claims.expires > now + 5 * 60_000 + 5_000
+      || claims.client !== clientKey(request) || claims.cart !== cartFingerprint(cart)
+      || usedAuthorizationTokens.has(claims.nonce)) return false;
+  usedAuthorizationTokens.set(claims.nonce, claims.expires);
+  return true;
+}
+
+function validatePayment(payment, totalCents) {
+  const method = String(payment?.method || "");
+  if (!["cash", "gcash_qr", "bank_transfer"].includes(method)) {
+    throw checkoutError("Choose a valid payment method.");
+  }
+  const receivedCents = amountToCents(payment?.amount_received);
+  if (method === "cash" && (receivedCents === null || receivedCents < totalCents)) {
+    throw checkoutError("The amount received must cover the total.");
+  }
+  const customerName = String(payment?.customer_name || "").trim().slice(0, 120);
+  return {
+    method,
+    customerName,
+    received: method === "cash" ? receivedCents : totalCents,
+    change: method === "cash" ? receivedCents - totalCents : 0
+  };
+}
+
 export default async function processCheckout(request) {
   if (request.method !== "POST") {
     return json({ status: "error", message: "Use POST." }, 405);
-  }
-
-  const missingConfig = [
-    "GREENPRINT_DB_HOST",
-    "GREENPRINT_DB_USER",
-    "GREENPRINT_DB_PASSWORD",
-    "GREENPRINT_CHECKOUT_PIN"
-  ].filter((name) => !process.env[name]);
-  if (missingConfig.length) {
-    return json({ status: "error", message: "Checkout is not configured on the server. Please ask staff for help." }, 503);
-  }
-  const sslMode = (process.env.GREENPRINT_DB_SSLMODE || "require").trim().toLowerCase();
-  if (!["require", "verify-ca", "verify-full"].includes(sslMode)) {
-    return json({ status: "error", message: "Checkout has an invalid database SSL mode. Please ask an administrator to check Netlify settings." }, 503);
-  }
-  if (["verify-ca", "verify-full"].includes(sslMode) && !process.env.GREENPRINT_DB_CA_CERT) {
-    return json({ status: "error", message: "The database CA certificate is missing from Netlify settings. Please ask an administrator to check the SSL configuration." }, 503);
   }
 
   let payload;
@@ -184,18 +227,9 @@ export default async function processCheckout(request) {
     return json({ status: "error", message: "Request body must be valid JSON." }, 400);
   }
 
-  const pin = String(payload?.pin ?? "");
   const cart = payload?.cart;
-  if (!/^\d{4,8}$/.test(pin) || !Array.isArray(cart) || cart.length < 1 || cart.length > 100) {
-    return json({ status: "error", message: "Enter a valid authorization PIN and cart." }, 400);
-  }
-
-  const pinResult = checkPin(request, pin);
-  if (!pinResult.ok) {
-    return json({
-      status: "error",
-      message: pinResult.locked ? "Too many PIN attempts. Wait one minute and try again." : "Incorrect checkout PIN."
-    }, pinResult.locked ? 429 : 401);
+  if (!Array.isArray(cart) || cart.length < 1 || cart.length > 100) {
+    return json({ status: "error", message: "The cart is empty or invalid." }, 400);
   }
 
   const quantities = new Map();
@@ -208,6 +242,33 @@ export default async function processCheckout(request) {
     const combined = (quantities.get(id) || 0) + quantity;
     if (combined > 999) return json({ status: "error", message: "The cart contains an invalid quantity." }, 400);
     quantities.set(id, combined);
+  }
+
+  if (!process.env.GREENPRINT_CHECKOUT_PIN) {
+    return json({ status: "error", message: "Checkout authorization is not configured. Please ask staff for help." }, 503);
+  }
+  if (payload?.action === "authorize") {
+    const pinResult = checkPin(request, String(payload?.pin ?? ""));
+    if (!pinResult.ok) {
+      return json({ status: "error", message: pinResult.locked ? "Too many PIN attempts. Wait one minute and try again." : "Incorrect checkout PIN." }, pinResult.locked ? 429 : 401);
+    }
+    return json({ status: "success", authorization_token: issueAuthorizationToken(request, cart) });
+  }
+  if (!consumeAuthorizationToken(request, payload?.authorization_token, cart)) {
+    return json({ status: "error", message: "Staff authorization expired. Please enter the PIN again." }, 401);
+  }
+
+  const missingConfig = ["GREENPRINT_DB_HOST", "GREENPRINT_DB_USER", "GREENPRINT_DB_PASSWORD"]
+    .filter((name) => !process.env[name]);
+  if (missingConfig.length) {
+    return json({ status: "error", message: "Checkout is not configured on the server. Please ask staff for help." }, 503);
+  }
+  const sslMode = (process.env.GREENPRINT_DB_SSLMODE || "require").trim().toLowerCase();
+  if (!["require", "verify-ca", "verify-full"].includes(sslMode)) {
+    return json({ status: "error", message: "Checkout has an invalid database SSL mode. Please ask an administrator to check Netlify settings." }, 503);
+  }
+  if (["verify-ca", "verify-full"].includes(sslMode) && !process.env.GREENPRINT_DB_CA_CERT) {
+    return json({ status: "error", message: "The database CA certificate is missing from Netlify settings. Please ask an administrator to check the SSL configuration." }, 503);
   }
 
   const db = databasePool();
@@ -266,6 +327,7 @@ export default async function processCheckout(request) {
     }
 
     const subtotal = (subtotalCents / 100).toFixed(2);
+    const payment = validatePayment(payload?.payment || { method: "cash", amount_received: subtotal }, subtotalCents);
     operationStage = "create transaction reference";
     const reference = transactionReference();
     const transactionValues = {
@@ -276,9 +338,10 @@ export default async function processCheckout(request) {
     if (transactionTimeColumn) transactionValues[transactionTimeColumn] = new Date();
     if (has(schema, "transactions", "discount_amount")) transactionValues.discount_amount = "0.00";
     if (has(schema, "transactions", "admin_id") && adminId !== null) transactionValues.admin_id = adminId;
-    // This POS has no tender selector. Let the database use its configured
-    // default (or NULL) instead of writing a hard-coded label that may not
-    // match the store's payment_method CHECK constraint.
+    if (has(schema, "transactions", "payment_method")) transactionValues.payment_method = payment.method;
+    if (has(schema, "transactions", "customer_name")) transactionValues.customer_name = payment.customerName || null;
+    if (has(schema, "transactions", "amount_received")) transactionValues.amount_received = (payment.received / 100).toFixed(2);
+    if (has(schema, "transactions", "change_amount")) transactionValues.change_amount = (payment.change / 100).toFixed(2);
 
     operationStage = "insert transaction record";
     const transactionResult = await insertRow(client, "transactions", transactionValues, transactionIdColumn);
@@ -332,7 +395,7 @@ export default async function processCheckout(request) {
         await insertRow(client, "admin_logs", {
           admin_id: adminId,
           action: "checkout",
-          details: JSON.stringify({ transaction_ref: reference, transaction_id: String(transactionId), item_count: lockedProducts.length, total: subtotal })
+          details: JSON.stringify({ transaction_ref: reference, transaction_id: String(transactionId), item_count: lockedProducts.length, total: subtotal, payment_method: payment.method, customer_name: payment.customerName, amount_received: payment.received / 100, change_amount: payment.change / 100 })
         });
         await client.query("RELEASE SAVEPOINT greenprint_admin_audit");
       } catch (error) {
@@ -348,7 +411,6 @@ export default async function processCheckout(request) {
     operationStage = "commit sale transaction";
     await client.query("COMMIT");
     inTransaction = false;
-    attemptsByClient.delete(pinResult.key);
     return json({
       status: "success",
       transaction_ref: reference,
@@ -356,6 +418,10 @@ export default async function processCheckout(request) {
       timestamp: timestamp || new Date().toISOString(),
       subtotal: Number(subtotal),
       total_amount: Number(subtotal),
+      payment_method: payment.method,
+      customer_name: payment.customerName,
+      amount_received: payment.received / 100,
+      change_amount: payment.change / 100,
       items: lockedProducts.map((product) => ({
         product_name: product.name,
         quantity: product.quantity,
