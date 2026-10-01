@@ -311,7 +311,9 @@
   }
 
   function getDimensions(name, category) {
-    const lowerName = name.toLowerCase();
+    const lowerName = String(name || '').toLowerCase().replace(/[″”]/g, '"');
+    const inchMatch = lowerName.match(/(\d+(?:\.\d+)?)\s*-?\s*(?:inches?\b|in\b|["'])/i);
+    const potInches = inchMatch ? Number(inchMatch[1]) : null;
     let width = 120; 
     let zIndex = 20; 
 
@@ -319,7 +321,10 @@
     else if (category === 'indoor' || category === 'outdoor') zIndex = 20;
     else if (category === 'pebbles' || category === 'supplies') zIndex = 30;
 
-    if (lowerName.includes('40 inch')) width = 260;
+    if (category === 'pots' && potInches !== null) {
+      const potWidths = { 5: 70, 6: 80, 8: 100, 10: 125, 12: 150, 15: 175, 16: 190, 20: 220, 40: 260 };
+      width = potWidths[potInches] || Math.max(64, Math.min(260, Math.round(20 + potInches * 10)));
+    } else if (lowerName.includes('40 inch')) width = 260;
     else if (lowerName.includes('20 inch') || lowerName.includes('extra large')) width = 220;
     else if (lowerName.includes('16 inch')) width = 190;
     else if (lowerName.includes('15 inch') || lowerName.includes('large')) width = 175;
@@ -493,6 +498,6 @@
 
   document.addEventListener('DOMContentLoaded', loadInventory);
 </script>
-<script src="garden_visualizer_3d.js?v=20261001-plain-garden-art"></script>
+<script src="garden_visualizer_3d.js?v=20261001-pot-size-scale"></script>
 </body>
 </html>

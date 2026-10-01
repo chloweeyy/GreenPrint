@@ -11,6 +11,12 @@ function validId(value) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 async function insertRow(client, table, values, returning = null) {
   const columns = Object.keys(values);
   const names = columns.map(quoteIdentifier).join(", ");
@@ -19,7 +25,7 @@ async function insertRow(client, table, values, returning = null) {
   return client.query(`INSERT INTO ${quoteIdentifier(table)} (${names}) VALUES (${params})${returnSql}`, columns.map((name) => values[name]));
 }
 
-async function readAction(client, schema, action) {
+async function readAction(client, schema, action, query = new URLSearchParams()) {
   let result;
   switch (action) {
     case "products":
@@ -36,8 +42,35 @@ async function readAction(client, schema, action) {
       break;
     case "transactions": {
       const timeColumn = firstColumn(schema, "transactions", ["created_at", "transaction_date", "timestamp"]);
+      const from = query.get("from") || "";
+      const to = query.get("to") || "";
+      if ((from && !validDate(from)) || (to && !validDate(to))) {
+        return { error: json({ status: "error", message: "Choose valid report dates." }, 422) };
+      }
+      if (from && to && from > to) {
+        return { error: json({ status: "error", message: "The from date must be on or before the to date." }, 422) };
+      }
+      if ((from || to) && !timeColumn) {
+        return { error: json({ status: "error", message: "Date filtering is unavailable because the transactions table has no date column." }, 503) };
+      }
       const timeSql = timeColumn ? `${quoteIdentifier(timeColumn)} AS created_at` : "NULL::timestamptz AS created_at";
-      result = await client.query(`SELECT transaction_ref, total_amount, subtotal, ${timeSql} FROM transactions ORDER BY ${timeColumn ? `${quoteIdentifier(timeColumn)} DESC` : "transaction_ref DESC"} LIMIT 500`);
+      const conditions = [];
+      const values = [];
+      if (from || to) {
+        let timeZone = process.env.GREENPRINT_TIMEZONE || "Asia/Manila";
+        try { new Intl.DateTimeFormat("en", { timeZone }); }
+        catch { timeZone = "UTC"; }
+        if (from) {
+          values.push(from, timeZone);
+          conditions.push(`${quoteIdentifier(timeColumn)} >= ($${values.length - 1}::date::timestamp AT TIME ZONE $${values.length}::text)`);
+        }
+        if (to) {
+          values.push(to, timeZone);
+          conditions.push(`${quoteIdentifier(timeColumn)} < (($${values.length - 1}::date + INTERVAL '1 day')::timestamp AT TIME ZONE $${values.length}::text)`);
+        }
+      }
+      const whereSql = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
+      result = await client.query(`SELECT transaction_ref, total_amount, subtotal, ${timeSql} FROM transactions${whereSql} ORDER BY ${timeColumn ? `${quoteIdentifier(timeColumn)} DESC` : "transaction_ref DESC"}`, values);
       break;
     }
     case "alerts":
@@ -67,33 +100,63 @@ async function mutateAction(client, schema, admin, action, input) {
     const name = String(input.name || "").trim();
     const category = String(input.category || "").toLowerCase().trim();
     const price = Number(input.price);
-    const stock = Number(input.stock);
+    const stock = input.stock == null || input.stock === "" ? null : Number(input.stock);
+    const validStock = Number.isSafeInteger(stock) && stock >= 0 && stock <= 2_147_483_647;
     if ((input.id != null && input.id !== "" && !id) || !name || name.length > 160 || !categoryPrefix[category]
       || !Number.isFinite(price) || price < 0 || price > 9_999_999_999.99
-      || !Number.isSafeInteger(stock) || stock < 0 || stock > 2_147_483_647) {
-      return json({ status: "error", message: "Check the product name, category, price, and stock." }, 422);
+      || (!id && !validStock)) {
+      return json({ status: "error", message: "Check the product name, category, price, and initial stock." }, 422);
     }
     await client.query("BEGIN");
     try {
       let productId;
-      let oldStock = 0;
+      let currentStock = 0;
       if (id) {
         const before = await client.query("SELECT stock FROM products WHERE id = $1 FOR UPDATE", [id]);
         if (!before.rows.length) throw Object.assign(new Error("Product was not found."), { status: 404 });
-        oldStock = Number(before.rows[0].stock);
-        await client.query("UPDATE products SET name = $1, category = $2, price = $3, stock = $4, updated_at = NOW() WHERE id = $5", [name, category, price, stock, id]);
+        currentStock = Number(before.rows[0].stock);
+        await client.query("UPDATE products SET name = $1, category = $2, price = $3, updated_at = NOW() WHERE id = $4", [name, category, price, id]);
         productId = id;
       } else {
         const sku = `KGG-${categoryPrefix[category]}-${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${Math.random().toString(16).slice(2, 6).toUpperCase()}`;
         const inserted = await client.query("INSERT INTO products (sku, name, category, price, stock, is_active) VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING id", [sku, name, category, price, stock]);
         productId = inserted.rows[0].id;
+        currentStock = stock;
       }
-      if (oldStock !== stock) {
-        await client.query("INSERT INTO inventory_logs (product_id, change_amount, reason) VALUES ($1, $2, $3)", [productId, stock - oldStock, id ? "Admin stock adjustment" : "Initial stock"]);
+      if (!id && stock > 0) {
+        await client.query("INSERT INTO inventory_logs (product_id, change_amount, reason) VALUES ($1, $2, $3)", [productId, stock, "Initial stock"]);
       }
-      await writeAudit(client, admin.admin_id, "save_product", { product_id: String(productId), name, stock });
+      await writeAudit(client, admin.admin_id, "save_product", { product_id: String(productId), name, stock: currentStock });
       await client.query("COMMIT");
       return json({ status: "success", id: productId });
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+  }
+
+  if (action === "adjust_stock") {
+    const id = validId(input.product_id);
+    const quantity = Number(input.quantity);
+    const direction = String(input.direction || "");
+    const reason = String(input.reason || "").trim();
+    if (!id || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 2_147_483_647
+      || !["in", "out"].includes(direction) || !reason || reason.length > 160) {
+      return json({ status: "error", message: "Choose a product, a positive whole-number quantity, and a reason." }, 422);
+    }
+    await client.query("BEGIN");
+    try {
+      const productResult = await client.query("SELECT id, name, stock FROM products WHERE id = $1 FOR UPDATE", [id]);
+      if (!productResult.rows.length) throw Object.assign(new Error("Product was not found."), { status: 404 });
+      const product = productResult.rows[0];
+      const change = direction === "in" ? quantity : -quantity;
+      const newStock = Number(product.stock) + change;
+      if (newStock < 0) throw Object.assign(new Error(`Cannot remove ${quantity}; only ${product.stock} are in stock.`), { status: 422 });
+      if (newStock > 2_147_483_647) throw Object.assign(new Error("The adjusted stock exceeds the database limit."), { status: 422 });
+      await client.query("UPDATE products SET stock = $1, updated_at = NOW() WHERE id = $2", [newStock, id]);
+      await client.query("INSERT INTO inventory_logs (product_id, change_amount, reason) VALUES ($1, $2, $3)", [id, change, reason]);
+      await writeAudit(client, admin.admin_id, direction === "in" ? "stock_in" : "stock_out", {
+        product_id: String(id), name: product.name, quantity, change, from_stock: Number(product.stock), to_stock: newStock, reason
+      });
+      await client.query("COMMIT");
+      return json({ status: "success", stock: newStock });
     } catch (error) { await client.query("ROLLBACK"); throw error; }
   }
 
@@ -152,7 +215,7 @@ export default async function adminApi(request) {
     if (request.method === "GET") {
       stage = `load ${action}`;
       const schema = await getSchema(client, TABLES);
-      const result = await readAction(client, schema, action);
+      const result = await readAction(client, schema, action, url.searchParams);
       return result.error || result.response;
     }
     if (request.method !== "POST") return json({ status: "error", message: "Use GET or POST." }, 405);

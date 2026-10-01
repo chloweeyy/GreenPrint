@@ -32,7 +32,48 @@ try {
                 $data = $pdo->query('SELECT zone_id, schedule_time FROM watering_schedules ORDER BY zone_id')->fetchAll();
                 break;
             case 'transactions':
-                $data = $pdo->query('SELECT * FROM transactions ORDER BY created_at DESC NULLS LAST LIMIT 500')->fetchAll();
+                $from = trim((string) ($_GET['from'] ?? ''));
+                $to = trim((string) ($_GET['to'] ?? ''));
+                $validDate = static function (string $value): bool {
+                    if ($value === '') return true;
+                    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return false;
+                    [$year, $month, $day] = array_map('intval', explode('-', $value));
+                    return checkdate($month, $day, $year);
+                };
+                if (!$validDate($from) || !$validDate($to) || ($from !== '' && $to !== '' && $from > $to)) {
+                    throw new InvalidArgumentException('Choose a valid date range; the from date must be on or before the to date.');
+                }
+                $columnQuery = $pdo->prepare("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name IN ('created_at', 'transaction_date', 'timestamp')");
+                $columnQuery->execute();
+                $availableColumns = $columnQuery->fetchAll(PDO::FETCH_COLUMN);
+                $timeColumn = null;
+                foreach (['created_at', 'transaction_date', 'timestamp'] as $candidate) {
+                    if (in_array($candidate, $availableColumns, true)) { $timeColumn = $candidate; break; }
+                }
+                if (($from !== '' || $to !== '') && $timeColumn === null) {
+                    throw new InvalidArgumentException('Date filtering is unavailable because the transactions table has no date column.');
+                }
+                $timeSql = $timeColumn === null ? 'NULL::timestamptz' : '"' . $timeColumn . '"';
+                $sql = 'SELECT transaction_ref, total_amount, subtotal, ' . $timeSql . ' AS created_at FROM transactions';
+                $conditions = [];
+                $params = [];
+                $timeZone = getenv('GREENPRINT_TIMEZONE') ?: 'Asia/Manila';
+                try { new DateTimeZone($timeZone); } catch (Throwable $e) { $timeZone = 'UTC'; }
+                if ($from !== '') {
+                    $conditions[] = '"' . $timeColumn . '" >= (CAST(? AS date)::timestamp AT TIME ZONE CAST(? AS text))';
+                    $params[] = $from;
+                    $params[] = $timeZone;
+                }
+                if ($to !== '') {
+                    $conditions[] = '"' . $timeColumn . '" < ((CAST(? AS date) + INTERVAL \'1 day\')::timestamp AT TIME ZONE CAST(? AS text))';
+                    $params[] = $to;
+                    $params[] = $timeZone;
+                }
+                if ($conditions) $sql .= ' WHERE ' . implode(' AND ', $conditions);
+                $sql .= $timeColumn === null ? ' ORDER BY transaction_ref DESC' : ' ORDER BY "' . $timeColumn . '" DESC';
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $data = $stmt->fetchAll();
                 break;
             case 'alerts':
                 $data = $pdo->query('SELECT id, alert_type, message, created_at FROM system_alerts WHERE is_resolved = FALSE ORDER BY created_at DESC LIMIT 100')->fetchAll();
@@ -73,8 +114,8 @@ try {
             $price = filter_var($input['price'] ?? null, FILTER_VALIDATE_FLOAT);
             $stock = filter_var($input['stock'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 2147483647]]);
             $categories = ['indoor', 'outdoor', 'pots', 'pebbles', 'supplies'];
-            if ($id === false || $name === '' || strlen($name) > 160 || !in_array($category, $categories, true) || $price === false || $price < 0 || $price > 9999999999.99 || $stock === false) {
-                $respond(['status' => 'error', 'message' => 'Check the product name, category, price, and stock.'], 422);
+            if ($id === false || $name === '' || strlen($name) > 160 || !in_array($category, $categories, true) || $price === false || $price < 0 || $price > 9999999999.99 || ($id === null && $stock === false)) {
+                $respond(['status' => 'error', 'message' => 'Check the product name, category, price, and initial stock.'], 422);
                 exit;
             }
             $pdo->beginTransaction();
@@ -83,12 +124,9 @@ try {
                 $before->execute([':id' => $id]);
                 $oldStock = $before->fetchColumn();
                 if ($oldStock === false) throw new InvalidArgumentException('Product was not found.');
-                $stmt = $pdo->prepare('UPDATE products SET name = :name, category = :category, price = :price, stock = :stock, updated_at = NOW() WHERE id = :id');
-                $stmt->execute([':name' => $name, ':category' => $category, ':price' => $price, ':stock' => $stock, ':id' => $id]);
-                if ((int) $oldStock !== $stock) {
-                    $inventory = $pdo->prepare('INSERT INTO inventory_logs (product_id, change_amount, reason) VALUES (:id, :change, :reason)');
-                    $inventory->execute([':id' => $id, ':change' => $stock - (int) $oldStock, ':reason' => 'Admin stock adjustment']);
-                }
+                $stmt = $pdo->prepare('UPDATE products SET name = :name, category = :category, price = :price, updated_at = NOW() WHERE id = :id');
+                $stmt->execute([':name' => $name, ':category' => $category, ':price' => $price, ':id' => $id]);
+                $stockForAudit = (int) $oldStock;
                 $targetId = $id;
                 $detail = 'Updated product ' . $name;
             } else {
@@ -97,15 +135,45 @@ try {
                 $stmt = $pdo->prepare('INSERT INTO products (sku, name, category, price, stock, is_active) VALUES (:sku, :name, :category, :price, :stock, TRUE) RETURNING id');
                 $stmt->execute([':sku' => $sku, ':name' => $name, ':category' => $category, ':price' => $price, ':stock' => $stock]);
                 $targetId = $stmt->fetchColumn();
+                $stockForAudit = $stock;
                 if ($stock > 0) {
                     $inventory = $pdo->prepare('INSERT INTO inventory_logs (product_id, change_amount, reason) VALUES (:id, :change, :reason)');
                     $inventory->execute([':id' => $targetId, ':change' => $stock, ':reason' => 'Initial stock']);
                 }
                 $detail = 'Added product ' . $name;
             }
-            audit_admin($pdo, $currentAdmin, 'save_product', 'product', (string) $targetId, ['name' => $name, 'stock' => $stock]);
+            audit_admin($pdo, $currentAdmin, 'save_product', 'product', (string) $targetId, ['name' => $name, 'stock' => $stockForAudit]);
             $pdo->commit();
             $respond(['status' => 'success', 'id' => $targetId]);
+            break;
+
+        case 'adjust_stock':
+            $id = filter_var($input['product_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            $quantity = filter_var($input['quantity'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 2147483647]]);
+            $direction = (string) ($input['direction'] ?? '');
+            $reason = trim((string) ($input['reason'] ?? ''));
+            if ($id === false || $quantity === false || !in_array($direction, ['in', 'out'], true) || $reason === '' || strlen($reason) > 160) {
+                throw new InvalidArgumentException('Choose a product, a positive whole-number quantity, and a reason.');
+            }
+            $pdo->beginTransaction();
+            $productQuery = $pdo->prepare('SELECT id, name, stock FROM products WHERE id = :id FOR UPDATE');
+            $productQuery->execute([':id' => $id]);
+            $product = $productQuery->fetch();
+            if (!$product) throw new InvalidArgumentException('Product was not found.');
+            $change = $direction === 'in' ? $quantity : -$quantity;
+            $newStock = (int) $product['stock'] + $change;
+            if ($newStock < 0) throw new InvalidArgumentException('Cannot remove ' . $quantity . '; only ' . (int) $product['stock'] . ' are in stock.');
+            if ($newStock > 2147483647) throw new InvalidArgumentException('The adjusted stock exceeds the database limit.');
+            $update = $pdo->prepare('UPDATE products SET stock = :stock, updated_at = NOW() WHERE id = :id');
+            $update->execute([':stock' => $newStock, ':id' => $id]);
+            $inventory = $pdo->prepare('INSERT INTO inventory_logs (product_id, change_amount, reason) VALUES (:id, :change, :reason)');
+            $inventory->execute([':id' => $id, ':change' => $change, ':reason' => $reason]);
+            audit_admin($pdo, $currentAdmin, $direction === 'in' ? 'stock_in' : 'stock_out', 'product', (string) $id, [
+                'name' => $product['name'], 'quantity' => $quantity, 'change' => $change,
+                'from_stock' => (int) $product['stock'], 'to_stock' => $newStock, 'reason' => $reason,
+            ]);
+            $pdo->commit();
+            $respond(['status' => 'success', 'stock' => $newStock]);
             break;
 
         case 'delete_product':

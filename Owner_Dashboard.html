@@ -41,9 +41,9 @@
     margin: 0;
     padding: 0;
     width: 100%;
-    min-height: 100vh;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
     background:
       radial-gradient(1100px 500px at 85% -10%, rgba(127,167,135,.10), transparent),
       var(--bg);
@@ -51,10 +51,14 @@
     font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  /* Keep the document as the page's vertical scroll surface. Explicitly
-     scrolling the root restores standard mouse-wheel behavior on desktop. */
-  html { height: 100%; overflow-y: auto; }
-  body { min-height: 100%; height: auto; overflow-y: visible; touch-action: auto; }
+  body {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    touch-action: auto;
+  }
+  @supports (height: 100dvh) { body { height: 100dvh; } }
   .display{font-family:'Playfair Display',serif;}
 
   header{
@@ -65,6 +69,7 @@
     background:var(--card);
     border-bottom:1px solid var(--card-border);
     width: 100%;
+    flex: 0 0 auto;
   }
   .brand{display:flex; align-items:center; gap:13px;}
   .brand-mark{
@@ -83,7 +88,19 @@
   .status-dot{width:7px;height:7px;border-radius:50%;background:#b3a292;}
   #clock{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;}
 
-  main{max-width:1240px;margin:0 auto;padding:30px 40px 70px;width:100%;}
+  main{
+    max-width:1240px;
+    width:100%;
+    margin:0 auto;
+    padding:30px 40px 70px;
+    flex:1 1 auto;
+    min-height:0;
+    overflow-x:hidden;
+    overflow-y:auto;
+    overscroll-behavior-y:contain;
+    touch-action:pan-y;
+    -webkit-overflow-scrolling:touch;
+  }
 
   @media (max-width: 1024px) {
     header {
@@ -259,6 +276,17 @@
   .inventory-search-input:focus {
     border-color: var(--sage);
   }
+  .report-filters{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;}
+  .report-filters label{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:700;color:var(--ink-muted);}
+  .report-filters input{min-height:42px;padding:9px 11px;border:1px solid var(--card-border);border-radius:9px;font:inherit;color:var(--ink);background:#fff;}
+  #salesReportSummary{font-size:13px;font-weight:700;color:var(--ink-body);margin-top:14px;}
+  .stock-modal-card{background:white;padding:26px;border-radius:18px;width:min(420px,calc(100vw - 28px));max-height:90vh;overflow-y:auto;box-shadow:0 20px 40px rgba(0,0,0,.2);}
+  .stock-modal-card input,.stock-modal-card textarea{width:100%;padding:12px;border:1px solid var(--card-border);border-radius:9px;font:inherit;}
+  @media(max-width:640px){
+    .report-filters{align-items:stretch;}
+    .report-filters label{flex:1 1 140px;}
+    .report-filters .btn{justify-content:center;flex:1 1 100%;min-height:44px;}
+  }
 </style>
 <style>body{visibility:hidden}</style>
 <link rel="stylesheet" href="kiosk-touch.css?v=20261001-tablet">
@@ -412,6 +440,17 @@
   <!-- TAB 3: FINANCIAL SALES REPORTING -->
   <div id="viewSales" style="display:none;">
     <div class="section-eyebrow">Financial Sales Reports & Transactions</div>
+    <div class="panel" style="margin-bottom:18px;">
+      <div class="panel-title">Generate a sales report</div>
+      <div class="report-filters">
+        <label>From date<input type="date" id="salesFromDate"></label>
+        <label>To date<input type="date" id="salesToDate"></label>
+        <button type="button" class="btn btn-water" onclick="loadSalesReports()">Apply dates</button>
+        <button type="button" class="btn btn-stop" onclick="clearSalesDateFilter()">Clear dates</button>
+        <button type="button" class="btn btn-water" onclick="generateSalesReport()">Generate CSV report</button>
+      </div>
+      <div id="salesReportSummary" role="status" aria-live="polite">Loading sales…</div>
+    </div>
     <div class="panel">
       <table class="history">
         <thead>
@@ -424,6 +463,26 @@
 
   <footer>GreenPrint IoT &amp; Retail Management System — Hardware Pending Deployment</footer>
 </main>
+
+<!-- Quantity-based stock movement modal -->
+<div id="stockAdjustmentModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:110; align-items:center; justify-content:center; padding:14px;">
+  <div class="stock-modal-card">
+    <h3 class="display" id="stockAdjustmentTitle" style="margin:0 0 8px;">Add stock</h3>
+    <p id="stockAdjustmentProduct" style="margin:0 0 18px;color:var(--ink-body);font-size:13px;"></p>
+    <form id="stockAdjustmentForm" style="display:flex;flex-direction:column;gap:14px;">
+      <input type="hidden" id="stockAdjustmentProductId">
+      <input type="hidden" id="stockAdjustmentDirection">
+      <label for="stockAdjustmentQuantity" style="font-size:12px;font-weight:700;color:var(--ink-muted);">Quantity</label>
+      <input type="number" id="stockAdjustmentQuantity" inputmode="numeric" min="1" step="1" max="2147483647" required>
+      <label for="stockAdjustmentReason" style="font-size:12px;font-weight:700;color:var(--ink-muted);">Reason</label>
+      <textarea id="stockAdjustmentReason" rows="2" maxlength="160" required></textarea>
+      <div style="display:flex;gap:10px;margin-top:4px;">
+        <button type="submit" id="stockAdjustmentSubmit" class="btn btn-water" style="flex:1;justify-content:center;">Confirm</button>
+        <button type="button" class="btn btn-stop" style="flex:1;justify-content:center;" onclick="closeStockAdjustmentModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <!-- Product Add/Edit Modal -->
 <div id="productModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center;">
@@ -445,7 +504,7 @@
           <option value="supplies">Supplies</option>
         </select>
       </div>
-      <div>
+      <div id="initialStockField">
         <label style="font-size:12px; font-weight:700; color:var(--ink-muted);">Stock</label>
         <input type="number" id="formStock" min="0" required style="width:100%; padding:10px; border:1px solid var(--card-border); border-radius:8px;">
       </div>
@@ -488,19 +547,31 @@
 <script>
   const ADMIN_CSRF = sessionStorage.getItem('kgg_admin_csrf') || '';
   let ALL_ADMIN_PRODUCTS = [];
+  let CURRENT_SALES_ROWS = [];
   let csrfToken = ADMIN_CSRF;
   const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
   const isXampp = localHosts.has(window.location.hostname) || window.location.hostname.endsWith('.localhost');
-  const adminApiUrl = (action) => isXampp
-    ? 'admin_api.php?action=' + encodeURIComponent(action)
-    : '/.netlify/functions/admin-api?action=' + encodeURIComponent(action);
+  const adminApiUrl = (action, query = {}) => {
+    const path = isXampp ? 'admin_api.php' : '/.netlify/functions/admin-api';
+    const params = new URLSearchParams({ action });
+    Object.entries(query).forEach(([key, value]) => { if (value) params.set(key, value); });
+    return path + '?' + params.toString();
+  };
   const adminSessionUrl = isXampp ? 'session_status.php' : '/.netlify/functions/admin-auth?action=session';
+  const dashboardScrollArea = document.querySelector('main');
+  const dashboardHeader = document.querySelector('header');
+  dashboardHeader.addEventListener('wheel', event => {
+    if (!event.deltaY) return;
+    const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? dashboardScrollArea.clientHeight : 1;
+    dashboardScrollArea.scrollTop += event.deltaY * unit;
+  }, { passive: true });
   const zones = [
     { id: 'zone1', name: 'Zone 01 — Indoor', schedule: '06:00 AM daily', temp: '--', humidity: '--', watering: false },
     { id: 'zone2', name: 'Zone 02 — Outdoor', schedule: '07:00 AM daily', temp: '--', humidity: '--', watering: false }
   ];
 
-  async function adminRequest(action, payload) {
+  async function adminRequest(action, payload, query = {}) {
     const options = { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } };
     if (payload) {
       options.method = 'POST';
@@ -508,7 +579,7 @@
       options.headers['X-CSRF-Token'] = csrfToken;
       options.body = JSON.stringify(payload);
     }
-    const response = await fetch(adminApiUrl(action), options);
+    const response = await fetch(adminApiUrl(action, query), options);
     const text = await response.text();
     let result;
     try { result = JSON.parse(text); }
@@ -523,7 +594,6 @@
     if (!response.ok || result.status !== 'success') throw new Error(result.message || 'Admin request failed.');
     return payload ? result : result.data;
   }
-
   function escapeHtml(value) {
     return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
@@ -552,7 +622,7 @@
       sessionStorage.setItem('kgg_admin_csrf', csrfToken);
       document.body.style.visibility = 'visible';
       tickClock();
-      await Promise.all([fetchWateringSchedules(), fetchLiveLowStock(), loadAdminInventory(), loadSalesReports(), fetchLiveSensorData(), fetchLiveChartData(), fetchLiveWateringHistory(), fetchLiveAlerts()]);
+      await Promise.all([fetchWateringSchedules(), fetchLiveLowStock(), loadAdminInventory(), fetchLiveSensorData(), fetchLiveChartData(), fetchLiveWateringHistory(), fetchLiveAlerts()]);
       setInterval(fetchLiveSensorData, 15000);
       setInterval(fetchLiveChartData, 30000);
       setInterval(fetchLiveWateringHistory, 15000);
@@ -640,10 +710,15 @@
     body.innerHTML = products.map(product =>
       '<tr><td>' + escapeHtml(product.sku || 'N/A') + '</td><td><b>' + escapeHtml(product.name) + '</b></td><td style="text-transform:capitalize;">' +
       escapeHtml(product.category) + '</td><td>' + Number(product.stock) + '</td><td style="text-align:right;">' + formatPrice(product.price) +
-      '</td><td style="text-align:right;white-space:nowrap;"><button type="button" class="btn" data-product-action="edit" data-product-id="' +
-      Number(product.id) + '" style="padding:4px 10px;font-size:11px;background:var(--water-pale);color:var(--water);">Edit</button> ' +
+      '</td><td style="text-align:right;white-space:nowrap;">' +
+      '<button type="button" class="btn" data-product-action="stock-in" data-product-id="' + Number(product.id) +
+      '" style="padding:5px 9px;font-size:11px;background:var(--sage-pale);color:var(--forest);">Add stock</button> ' +
+      '<button type="button" class="btn" data-product-action="stock-out" data-product-id="' + Number(product.id) +
+      '" style="padding:5px 9px;font-size:11px;background:var(--marigold-pale);color:var(--marigold);">Remove stock</button> ' +
+      '<button type="button" class="btn" data-product-action="edit" data-product-id="' + Number(product.id) +
+      '" style="padding:5px 9px;font-size:11px;background:var(--water-pale);color:var(--water);">Edit</button> ' +
       '<button type="button" class="btn" data-product-action="toggle" data-product-id="' + Number(product.id) +
-      '" style="padding:4px 10px;font-size:11px;background:var(--coral-pale);color:var(--coral);">' + (product.is_active ? 'Deactivate' : 'Restore') + '</button></td></tr>'
+      '" style="padding:5px 9px;font-size:11px;background:var(--coral-pale);color:var(--coral);">' + (product.is_active ? 'Deactivate' : 'Restore') + '</button></td></tr>'
     ).join('');
   }
 
@@ -660,10 +735,29 @@
     document.getElementById('formName').value = name || '';
     document.getElementById('formCategory').value = category || 'indoor';
     document.getElementById('formStock').value = stock == null ? 0 : stock;
+    document.getElementById('initialStockField').style.display = id ? 'none' : '';
+    document.getElementById('formStock').required = !id;
     document.getElementById('formPrice').value = price == null ? 0 : price;
     document.getElementById('productModal').style.display = 'flex';
   }
   function closeProductModal() { document.getElementById('productModal').style.display = 'none'; }
+
+  function openStockAdjustment(productId, direction) {
+    const product = ALL_ADMIN_PRODUCTS.find(item => String(item.id) === String(productId));
+    if (!product) return;
+    const adding = direction === 'in';
+    document.getElementById('stockAdjustmentProductId').value = String(product.id);
+    document.getElementById('stockAdjustmentDirection').value = direction;
+    document.getElementById('stockAdjustmentTitle').textContent = adding ? 'Add stock' : 'Remove stock';
+    document.getElementById('stockAdjustmentProduct').textContent = product.name + ' · Current stock: ' + Number(product.stock);
+    document.getElementById('stockAdjustmentReason').value = adding ? 'Stock received' : 'Stock removed';
+    document.getElementById('stockAdjustmentSubmit').textContent = adding ? 'Add quantity' : 'Remove quantity';
+    document.getElementById('stockAdjustmentSubmit').style.background = adding ? 'var(--forest)' : 'var(--coral)';
+    document.getElementById('stockAdjustmentQuantity').value = '';
+    document.getElementById('stockAdjustmentModal').style.display = 'flex';
+    document.getElementById('stockAdjustmentQuantity').focus();
+  }
+  function closeStockAdjustmentModal() { document.getElementById('stockAdjustmentModal').style.display = 'none'; }
 
   document.getElementById('adminInventoryTable').addEventListener('click', async event => {
     const button = event.target.closest('button[data-product-action]');
@@ -671,6 +765,8 @@
     const product = ALL_ADMIN_PRODUCTS.find(item => String(item.id) === button.dataset.productId);
     if (!product) return;
     if (button.dataset.productAction === 'edit') { openProductModal(product.id, product.name, product.category, product.stock, product.price); return; }
+    if (button.dataset.productAction === 'stock-in') { openStockAdjustment(product.id, 'in'); return; }
+    if (button.dataset.productAction === 'stock-out') { openStockAdjustment(product.id, 'out'); return; }
     if (!window.confirm(product.is_active ? 'Deactivate this product from the kiosk catalog?' : 'Restore this product to the kiosk catalog?')) return;
     try {
       await adminRequest('toggle_product', { id: Number(product.id), is_active: !product.is_active });
@@ -684,9 +780,9 @@
       id: document.getElementById('formId').value || null,
       name: document.getElementById('formName').value.trim(),
       category: document.getElementById('formCategory').value,
-      stock: Number(document.getElementById('formStock').value),
       price: Number(document.getElementById('formPrice').value)
     };
+    if (!payload.id) payload.stock = Number(document.getElementById('formStock').value);
     try {
       await adminRequest('save_product', payload);
       closeProductModal();
@@ -694,18 +790,86 @@
     } catch (error) { window.alert(error.message || 'Product could not be saved.'); }
   });
 
+  document.getElementById('stockAdjustmentForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const submit = document.getElementById('stockAdjustmentSubmit');
+    const payload = {
+      product_id: Number(document.getElementById('stockAdjustmentProductId').value),
+      direction: document.getElementById('stockAdjustmentDirection').value,
+      quantity: Number(document.getElementById('stockAdjustmentQuantity').value),
+      reason: document.getElementById('stockAdjustmentReason').value.trim()
+    };
+    if (!Number.isSafeInteger(payload.quantity) || payload.quantity < 1 || !payload.reason) {
+      window.alert('Enter a positive whole-number quantity and a reason.');
+      return;
+    }
+    submit.disabled = true;
+    try {
+      await adminRequest('adjust_stock', payload);
+      closeStockAdjustmentModal();
+      await Promise.all([loadAdminInventory(), loadInventoryHistory(), fetchLiveLowStock()]);
+    } catch (error) { window.alert(error.message || 'Stock could not be adjusted.'); }
+    finally { submit.disabled = false; }
+  });
+
   async function loadSalesReports() {
     const body = document.getElementById('salesTableBody');
+    const summary = document.getElementById('salesReportSummary');
+    const from = document.getElementById('salesFromDate').value;
+    const to = document.getElementById('salesToDate').value;
+    if (from && to && from > to) {
+      summary.textContent = 'The from date must be on or before the to date.';
+      body.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;">Choose a valid date range.</td></tr>';
+      return false;
+    }
     try {
-      const data = await adminRequest('transactions') || [];
+      const data = await adminRequest('transactions', null, { from, to }) || [];
+      CURRENT_SALES_ROWS = data;
+      const total = data.reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
+      const dateLabel = from && to ? from + ' to ' + to : from ? 'From ' + from : to ? 'Through ' + to : 'All dates';
+      summary.textContent = data.length + ' transaction' + (data.length === 1 ? '' : 's') + ' · Total sales ' + formatPrice(total) + ' · ' + dateLabel;
       body.innerHTML = data.length ? data.map(item =>
         '<tr><td style="padding:14px;border-bottom:1px solid var(--card-border);"><b>' + escapeHtml(item.transaction_ref || 'N/A') + '</b></td>' +
-        '<td style="padding:14px;border-bottom:1px solid var(--card-border);">' + (item.created_at ? new Date(item.created_at).toLocaleString() : '') + '</td>' +
+        '<td style="padding:14px;border-bottom:1px solid var(--card-border);">' + (item.created_at ? new Date(item.created_at).toLocaleString() : '—') + '</td>' +
         '<td style="padding:14px;border-bottom:1px solid var(--card-border);text-align:right;font-weight:700;color:var(--forest);">' + formatPrice(item.total_amount) + '</td></tr>'
-      ).join('') : '<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--ink-muted);">No sales transactions recorded yet.</td></tr>';
+      ).join('') : '<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--ink-muted);">No sales transactions found for these dates.</td></tr>';
+      return true;
     } catch (error) {
+      CURRENT_SALES_ROWS = [];
+      summary.textContent = error.message || 'Sales report could not be loaded.';
       body.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;">Sales data unavailable.</td></tr>';
+      return false;
     }
+  }
+
+  function clearSalesDateFilter() {
+    document.getElementById('salesFromDate').value = '';
+    document.getElementById('salesToDate').value = '';
+    loadSalesReports();
+  }
+
+  function csvCell(value) {
+    let text = String(value == null ? '' : value);
+    if (/^[\t\r ]*[=+\-@]/.test(text)) text = "'" + text;
+    return '"' + text.replace(/"/g, '""') + '"';
+  }
+
+  async function generateSalesReport() {
+    if (!await loadSalesReports()) return;
+    if (!CURRENT_SALES_ROWS.length) { window.alert('There are no transactions in this date range.'); return; }
+    const rows = [
+      ['Transaction reference', 'Date and time', 'Subtotal (PHP)', 'Total (PHP)'],
+      ...CURRENT_SALES_ROWS.map(item => [item.transaction_ref, item.created_at ? new Date(item.created_at).toLocaleString() : '', item.subtotal, item.total_amount])
+    ];
+    const csv = '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+    const blobUrl = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = 'GreenPrint-sales-' + (document.getElementById('salesFromDate').value || 'all') + '-to-' + (document.getElementById('salesToDate').value || 'all') + '.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   }
 
   function tickClock() {
