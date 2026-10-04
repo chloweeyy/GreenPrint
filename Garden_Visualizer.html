@@ -132,6 +132,26 @@
     #inventoryList button { min-height:54px; padding:6px!important; }
     #inventoryList img { width:40px!important; height:40px!important; }
   }
+  /* Give landscape tablets a little more breathing room and prevent the
+     empty-canvas instructions from fighting the view controls. */
+  @media (min-width: 701px) and (max-width: 1280px) and (orientation: landscape) {
+    header { height:62px!important; min-height:62px!important; padding:5px 14px!important; }
+    header h1 { font-size:19px!important; }
+    main { gap:12px!important; padding:10px!important; }
+    #left-panel { padding:12px!important; }
+    #right-panel { width:clamp(250px,29vw,330px)!important; min-width:250px!important; flex:0 0 clamp(250px,29vw,330px)!important; }
+    #canvasArea { min-height:170px!important; }
+    #canvasPlaceholder { max-width:min(360px,86%)!important; padding:clamp(12px,2vw,22px)!important; }
+    #canvasPlaceholder > span { font-size:38px!important; }
+    #canvasPlaceholder h3 { font-size:18px!important; }
+    #canvasPlaceholder p { font-size:12px!important; line-height:1.45!important; }
+  }
+  @media (min-width: 701px) and (max-height: 760px) and (orientation: landscape) {
+    header { height:54px!important; min-height:54px!important; }
+    main { height:calc(100dvh - 54px)!important; max-height:calc(100dvh - 54px)!important; }
+    .template-card { height:64px!important; }
+    #visualizerInstructions { max-height:42px; overflow:auto; }
+  }
 </style>
 <link rel="stylesheet" href="kiosk-touch.css?v=20261001-tablet">
 </head>
@@ -536,6 +556,6 @@
     <button id="closeVisualizerGuide" type="button" class="min-h-12 w-full rounded-2xl bg-primary px-5 py-3 font-bold text-white">Start planning</button>
   </div>
 </div>
-<script src="garden_visualizer_3d.js?v=20261002-tablet-layout-v19"></script>
+<script src="garden_visualizer_3d.js?v=20261004-tablet-layout-v20"></script>
 </body>
 </html>

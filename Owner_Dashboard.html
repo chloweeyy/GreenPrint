@@ -127,6 +127,45 @@
     }
   }
 
+  /* Landscape tablets: keep navigation and cards compact without shrinking
+     the dashboard controls to phone-sized targets. */
+  @media (min-width: 701px) and (max-width: 1280px) and (orientation: landscape) {
+    header {
+      flex-direction: row !important;
+      flex-wrap: wrap !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      text-align: left !important;
+      gap: 8px 16px !important;
+      padding: 10px 18px !important;
+    }
+    .brand {
+      flex-direction: row !important;
+      align-items: center !important;
+      gap: 9px !important;
+      flex: 0 1 auto;
+    }
+    .brand-mark { width: 38px; height: 38px; }
+    .brand-text .eyebrow { font-size: 9px; }
+    .brand-text h1 { font-size: 18px; }
+    .header-right {
+      width: auto !important;
+      justify-content: flex-end !important;
+      flex: 1 1 620px;
+      gap: 8px !important;
+      font-size: 12px;
+    }
+    .header-right > div:first-child { gap: 6px !important; }
+    .header-right .btn { min-height: 42px; padding: 7px 10px !important; font-size: 11px !important; }
+    .status-pill { padding: 6px 9px; font-size: 11px; }
+    main { padding: 16px 18px 42px !important; }
+    .zones { gap: 14px; margin-bottom: 16px; }
+    .zone-card { padding: 18px; }
+    .chart-card { padding: 18px; margin-bottom: 18px; }
+    .chart-holder { height: 190px; }
+    .panel { padding: 18px; }
+  }
+
   #alertBanner{
     border:1px solid #f0c7ba;
     background:var(--coral-pale);
@@ -380,6 +419,7 @@
           </tbody>
         </table>
       </div>
+      <div id="scheduleFeedback" role="status" aria-live="polite" style="min-height:18px; margin-top:8px; color:var(--ink-muted); font-size:12px;"></div>
     </div>
 
     <!-- UNIFIED CHART -->
@@ -526,8 +566,8 @@
 </div>
 
 <!-- Schedule Adjust Modal -->
-<div id="scheduleModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center;">
-  <div style="background:white; padding:30px; border-radius:18px; width:400px; max-width:90%; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+<div id="scheduleModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:white; padding:clamp(18px, 4vw, 30px); border-radius:18px; width:400px; max-width:100%; max-height:90dvh; overflow:auto; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
     <h3 class="display" style="margin-top:0;">Adjust Watering Schedule</h3>
     <form id="scheduleForm" style="display:flex; flex-direction:column; gap:14px;" onsubmit="saveSchedule(event)">
       <div>
@@ -542,6 +582,7 @@
         </select>
         <small style="color:var(--ink-muted);">Both areas water together, then the ESP32 stops automatically after the selected duration.</small>
       </div>
+      <small style="color:var(--ink-muted);">The schedule runs daily using the configured system time. If you save a time that is already due (within 5 minutes), watering starts right away.</small>
       <div style="display:flex; gap:10px; margin-top:10px;">
         <button type="submit" class="btn btn-water" style="flex:1; justify-content:center;">Update Schedule</button>
         <button type="button" class="btn btn-stop" style="flex:1; justify-content:center;" onclick="closeScheduleModal()">Cancel</button>
@@ -954,7 +995,15 @@
   async function fetchSharedWateringState() {
     try {
       const data = await adminRequest('watering_state') || [];
-      if (data.length) sharedWateringActive = String(data[0].command).toUpperCase() === 'ON';
+      if (data.length) {
+        const latest = data[0];
+        sharedWateringActive = String(latest.command).toUpperCase() === 'ON';
+        const seconds = Number(latest.auto_stop_seconds);
+        const issuedAt = Date.parse(latest.created_at);
+        if (sharedWateringActive && [30, 60].includes(seconds) && Number.isFinite(issuedAt)) {
+          sharedWateringActive = Date.now() < issuedAt + seconds * 1000;
+        }
+      }
       else sharedWateringActive = false;
       updateSharedWateringControls();
     } catch (error) {}
@@ -992,12 +1041,26 @@
     const time = document.getElementById('schedInputTime').value;
     const durationSeconds = Number(document.getElementById('schedDuration').value);
     try {
-      await adminRequest('save_schedule', { zone_id: 'zone1', schedule_time: time, duration_seconds: durationSeconds });
+      const result = await adminRequest('save_schedule', { zone_id: 'zone1', schedule_time: time, duration_seconds: durationSeconds });
       wateringSchedule.schedule_time = time;
       wateringSchedule.duration_seconds = durationSeconds;
       document.getElementById('schedTime').textContent = formatScheduleTime(time);
       document.getElementById('schedDurationDisplay').textContent = durationSeconds === 30 ? '30 seconds' : '1 minute';
+      const feedback = document.getElementById('scheduleFeedback');
+      if (feedback) {
+        if (result.started_now) {
+          feedback.textContent = 'Schedule saved. Watering both areas has started and will stop automatically after ' + (durationSeconds === 30 ? '30 seconds.' : '1 minute.');
+        } else if (result.already_watering) {
+          feedback.textContent = 'Schedule saved. Shared watering was already on, so the system did not send a second start command.';
+        } else {
+          feedback.textContent = 'Schedule saved. It will run daily at ' + formatScheduleTime(time) + ' for ' + (durationSeconds === 30 ? '30 seconds.' : '1 minute.');
+        }
+      }
       closeScheduleModal();
+      if (result.started_now) {
+        fetchLiveWateringHistory();
+        await fetchSharedWateringState();
+      }
     } catch (error) { window.alert(error.message || 'Watering schedule could not be saved.'); }
   }
 

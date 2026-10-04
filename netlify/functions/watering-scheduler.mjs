@@ -1,36 +1,8 @@
 import { databasePool } from "./admin-common.mjs";
+import { configuredTimeZone, dueScheduleDate } from "./watering-time.mjs";
 
 // Netlify invokes this once a minute (UTC); schedule rows use GREENPRINT_TIMEZONE.
 export const config = { schedule: "* * * * *" };
-
-function localClock(date, timeZone) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23"
-  }).formatToParts(date);
-  const value = (type) => parts.find((part) => part.type === type)?.value || "00";
-  const year = value("year");
-  const month = value("month");
-  const day = value("day");
-  const hour = Number(value("hour"));
-  const minute = Number(value("minute"));
-  return { date: `${year}-${month}-${day}`, minuteOfDay: hour * 60 + minute };
-}
-
-function getTimeZone() {
-  const requested = process.env.GREENPRINT_TIMEZONE || "Asia/Manila";
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: requested });
-    return requested;
-  } catch {
-    return "UTC";
-  }
-}
 
 async function ensureSchedulerSchema(client) {
   const column = await client.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'watering_schedules' AND column_name = 'duration_minutes') AS exists");
@@ -92,7 +64,7 @@ export default async function wateringScheduler() {
     }
 
     const now = new Date();
-    const local = localClock(now, getTimeZone());
+    const timeZone = configuredTimeZone();
     const expired = await client.query(
       "SELECT schedule_slot, run_date FROM watering_schedule_runs WHERE status = 'RUNNING' AND stops_at <= $1::timestamptz FOR UPDATE",
       [now.toISOString()]
@@ -114,11 +86,14 @@ export default async function wateringScheduler() {
         "SELECT zone_id, schedule_time, duration_seconds FROM watering_schedules WHERE enabled IS TRUE AND zone_id = 'zone1' ORDER BY schedule_time FOR UPDATE"
       );
       for (const schedule of schedules.rows) {
-        const match = String(schedule.schedule_time || "").match(/^(\d{1,2}):(\d{2})/);
-        if (!match) continue;
-        const scheduledMinute = Number(match[1]) * 60 + Number(match[2]);
-        const minutesLate = local.minuteOfDay - scheduledMinute;
-        if (minutesLate < 0 || minutesLate > 1) continue;
+        const runDate = dueScheduleDate(schedule.schedule_time, now, timeZone);
+        if (!runDate) continue;
+
+        const latestCommand = await client.query(
+          "SELECT command, auto_stop_seconds FROM device_commands WHERE zone_id = 'zone1' ORDER BY id DESC LIMIT 1"
+        );
+        if (String(latestCommand.rows[0]?.command || "").toUpperCase() === "ON"
+          && latestCommand.rows[0]?.auto_stop_seconds == null) continue;
 
         const durationSeconds = Number(schedule.duration_seconds) === 30 ? 30 : 60;
         const started = await client.query(
@@ -126,7 +101,7 @@ export default async function wateringScheduler() {
            VALUES ($1, $2::date, $3::timestamptz, $3::timestamptz + ($4::integer * INTERVAL '1 second'), 'RUNNING')
            ON CONFLICT (schedule_slot, run_date) DO NOTHING
            RETURNING schedule_slot`,
-          [schedule.zone_id, local.date, now.toISOString(), durationSeconds]
+          [schedule.zone_id, runDate, now.toISOString(), durationSeconds]
         );
         if (!started.rows.length) continue;
 

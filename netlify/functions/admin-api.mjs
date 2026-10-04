@@ -2,6 +2,7 @@ import {
   checkCsrf, databasePool, firstColumn, getSchema, hasColumn, json, quoteIdentifier,
   requireAdmin, requestBody, writeAudit
 } from "./admin-common.mjs";
+import { configuredTimeZone, dueScheduleDate } from "./watering-time.mjs";
 
 const TABLES = ["admin_users", "products", "transactions", "inventory_logs", "watering_schedules", "system_alerts", "sensor_readings", "watering_logs", "device_commands", "admin_logs"];
 const categoryPrefix = { indoor: "IN", outdoor: "OUT", pots: "POT", pebbles: "PBL", supplies: "SUP" };
@@ -61,7 +62,7 @@ async function readAction(client, schema, action, query = new URLSearchParams())
       result = await client.query("SELECT zone_id, schedule_time, duration_seconds FROM watering_schedules WHERE zone_id = 'zone1' LIMIT 1");
       break;
     case "watering_state":
-      result = await client.query("SELECT command, created_at FROM device_commands WHERE zone_id = 'zone1' ORDER BY id DESC LIMIT 1");
+      result = await client.query("SELECT command, created_at, auto_stop_seconds FROM device_commands WHERE zone_id = 'zone1' ORDER BY id DESC LIMIT 1");
       break;
     case "transactions": {
       // Prefer the sale's recorded date; created_at can be later for imported/backfilled transactions.
@@ -203,10 +204,58 @@ async function mutateAction(client, schema, admin, action, input) {
       || ![30, 60].includes(durationSeconds)) {
       return json({ status: "error", message: "Choose a valid shared daily time and a watering duration of 30 or 60 seconds." }, 422);
     }
-    await client.query("UPDATE watering_schedules SET enabled = FALSE WHERE zone_id = 'zone2'");
-    await client.query("INSERT INTO watering_schedules (zone_id, schedule_time, duration_seconds, enabled, updated_at) VALUES ($1, $2, $3, TRUE, NOW()) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time, duration_seconds = EXCLUDED.duration_seconds, enabled = TRUE, updated_at = NOW()", [zoneId, time, durationSeconds]);
-    await writeAudit(client, admin.admin_id, "save_schedule", { schedule_slot: "shared", time, duration_seconds: durationSeconds });
-    return json({ status: "success" });
+    await client.query("BEGIN");
+    try {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('greenprint-shared-watering-scheduler'))");
+      await client.query("UPDATE watering_schedules SET enabled = FALSE WHERE zone_id = 'zone2'");
+      await client.query("INSERT INTO watering_schedules (zone_id, schedule_time, duration_seconds, enabled, updated_at) VALUES ($1, $2, $3, TRUE, NOW()) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time, duration_seconds = EXCLUDED.duration_seconds, enabled = TRUE, updated_at = NOW()", [zoneId, time, durationSeconds]);
+
+      // If the user saves a time that is already due, start now. This shares
+      // the scheduler's daily run lock, so the minute job cannot double-start.
+      let startedNow = false;
+      let alreadyWatering = false;
+      const now = new Date();
+      const runDate = dueScheduleDate(time, now, configuredTimeZone());
+      if (runDate) {
+        const active = await client.query(
+          "SELECT 1 FROM watering_schedule_runs WHERE schedule_slot = 'zone1' AND status = 'RUNNING' AND stops_at > $1::timestamptz LIMIT 1",
+          [now.toISOString()]
+        );
+        if (!active.rows.length) {
+          const current = await client.query(
+            "SELECT command, auto_stop_seconds FROM device_commands WHERE zone_id = 'zone1' ORDER BY id DESC LIMIT 1"
+          );
+          alreadyWatering = String(current.rows[0]?.command || "").toUpperCase() === "ON"
+            && current.rows[0]?.auto_stop_seconds == null;
+          if (!alreadyWatering) {
+            const run = await client.query(
+              `INSERT INTO watering_schedule_runs (schedule_slot, run_date, started_at, stops_at, status)
+               VALUES ('zone1', $1::date, $2::timestamptz, $2::timestamptz + ($3::integer * INTERVAL '1 second'), 'RUNNING')
+               ON CONFLICT (schedule_slot, run_date) DO NOTHING
+               RETURNING schedule_slot`,
+              [runDate, now.toISOString(), durationSeconds]
+            );
+            if (run.rows.length) {
+              await client.query(
+                "INSERT INTO device_commands (zone_id, zone_name, command, status, auto_stop_seconds) VALUES ('zone1', 'Shared irrigation — both areas', 'ON', 'PENDING', $1)",
+                [durationSeconds]
+              );
+              await client.query(
+                "INSERT INTO watering_logs (zone_id, zone_name, status) VALUES ('zone1', 'Shared daily watering — both areas', 'AUTO_ON')"
+              );
+              startedNow = true;
+            }
+          }
+        }
+      }
+
+      await writeAudit(client, admin.admin_id, "save_schedule", { schedule_slot: "shared", time, duration_seconds: durationSeconds, started_now: startedNow });
+      await client.query("COMMIT");
+      return json({ status: "success", started_now: startedNow, already_watering: alreadyWatering });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    }
   }
 
   if (action === "watering") {
