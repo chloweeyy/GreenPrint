@@ -53,7 +53,8 @@ String lastCommand2 = "";
 unsigned long lastPush = 0;
 unsigned long lastPoll = 0;
 
-const unsigned long PUSH_INTERVAL = 120000;
+// Dashboard marks the controller offline after 90 seconds without a sensor post.
+const unsigned long PUSH_INTERVAL = 60000;
 const unsigned long POLL_INTERVAL = 3000;
 
 void connectWiFi() {
