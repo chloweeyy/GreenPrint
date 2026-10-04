@@ -26,10 +26,16 @@ const char* SUPABASE_KEY = GP_SUPABASE_KEY;
 #define SONAR_ECHO   27
 #define RELAY_ON     HIGH
 #define RELAY_OFF    LOW
-// Calibrate these distances from the sensor face to the water surface.
-// Replace 30 cm (empty) and 5 cm (full) with measurements from your tank.
-const float TANK_EMPTY_DISTANCE_CM = 30.0;
-const float TANK_FULL_DISTANCE_CM = 5.0;
+// AJ-SR04M readings inside its 20 cm blind zone are unreliable. Keep a small
+// margin and mount the probe at least 5 cm above the tank rim. For the 39 cm
+// tank with a maximum water depth of about half its height, these are initial
+// sensor-face-to-water distances: empty at tank bottom = 44 cm; full = 24.5 cm.
+// Re-measure both endpoints from the probe face after mounting and adjust them.
+const float SONAR_MIN_VALID_DISTANCE_CM = 22.0;
+const float TANK_EMPTY_DISTANCE_CM = 44.0;
+const float TANK_FULL_DISTANCE_CM = 24.5;
+const int SONAR_SAMPLE_COUNT = 5;
+const int SONAR_MIN_VALID_SAMPLES = 3;
 
 DHT dht(DHT_PIN, DHT_TYPE);
 WebServer server(80);
@@ -85,7 +91,36 @@ float readSonar() {
   digitalWrite(SONAR_TRIG, LOW);
   long duration = pulseIn(SONAR_ECHO, HIGH, 30000);
   if (duration == 0) { Serial.println("Sonar timeout"); return -1; }
-  return duration * 0.034 / 2.0;
+  float distance = duration * 0.034 / 2.0;
+  if (distance < SONAR_MIN_VALID_DISTANCE_CM) {
+    Serial.printf("Sonar below reliable range: %.1f cm\n", distance);
+    return -1;
+  }
+  return distance;
+}
+
+float readStableSonar() {
+  float samples[SONAR_SAMPLE_COUNT];
+  int validSamples = 0;
+  for (int i = 0; i < SONAR_SAMPLE_COUNT; i++) {
+    float distance = readSonar();
+    if (distance > 0) samples[validSamples++] = distance;
+    if (i + 1 < SONAR_SAMPLE_COUNT) delay(60);
+  }
+  if (validSamples < SONAR_MIN_VALID_SAMPLES) return -1;
+
+  // Sort the valid readings and return the median (or middle-pair average).
+  for (int i = 1; i < validSamples; i++) {
+    float value = samples[i];
+    int j = i - 1;
+    while (j >= 0 && samples[j] > value) {
+      samples[j + 1] = samples[j];
+      j--;
+    }
+    samples[j + 1] = value;
+  }
+  if (validSamples % 2 == 1) return samples[validSamples / 2];
+  return (samples[validSamples / 2 - 1] + samples[validSamples / 2]) / 2.0;
 }
 
 void readSensors() {
@@ -93,8 +128,9 @@ void readSensors() {
   float h = dht.readHumidity();
   if (!isnan(t)) temperature = t;
   if (!isnan(h)) humidity    = h;
-  float dist = readSonar();
-  if (dist > 0 && TANK_EMPTY_DISTANCE_CM > TANK_FULL_DISTANCE_CM) {
+  float dist = readStableSonar();
+  if (dist > 0 && TANK_EMPTY_DISTANCE_CM > TANK_FULL_DISTANCE_CM &&
+      TANK_FULL_DISTANCE_CM >= SONAR_MIN_VALID_DISTANCE_CM) {
     // A smaller sensor-to-water distance means a fuller tank.
     float percent = 100.0f * (TANK_EMPTY_DISTANCE_CM - dist)
                     / (TANK_EMPTY_DISTANCE_CM - TANK_FULL_DISTANCE_CM);
