@@ -53,6 +53,13 @@
   .canvas-item:active { cursor: grabbing; transform: scale(1.05); z-index: 999 !important; }
   .canvas-item img { pointer-events: none; height: auto; }
   #inventoryList { touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .plan-control-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:42px; flex:none; }
+  #visualizerInstructions { display:flex; align-items:center; gap:8px; flex:1 1 auto; min-width:0; min-height:38px; margin:0 0 6px; padding:6px 10px; border:1px solid rgba(14,108,74,.15); border-radius:12px; background:#f2f7f1; color:#395446; font:500 11px/1.35 Inter,Arial,sans-serif; }
+  .plan-help-label { flex:none; color:#012d1d; font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+  #planHint { min-width:0; }
+  #planToolbarHost { display:flex; flex:none; justify-content:flex-end; margin-bottom:6px; }
+  #planLayerHost { width:100%; flex:none; margin-bottom:6px; }
+  #planScaleHost { display:flex; justify-content:center; align-items:center; flex:none; min-height:20px; }
 
   /* Pot Layer: Heavy floor shadow */
   .type-pots img { filter: drop-shadow(0px 25px 15px rgba(0,0,0,0.6)); }
@@ -103,6 +110,11 @@
     #canvasArea { height: clamp(320px, 58vh, 460px) !important; min-height: 320px !important; flex: none !important; }
     #right-panel { width: 100% !important; height: min(60vh, 560px) !important; min-height: 390px; flex: none !important; margin-bottom: 18px !important; }
     .template-card { min-width: 100px; height: 70px; }
+    .plan-control-row { align-items:stretch; flex-wrap:wrap; gap:6px; }
+    #visualizerInstructions { flex:1 1 100%; margin:0; font-size:11px; }
+    #planToolbarHost { flex:1 1 100%; justify-content:center; margin:0; }
+    #planLayerHost { margin-bottom:6px; }
+    #planScaleHost { min-height:22px; }
   }
   /* Samsung Galaxy Tab landscape layout: larger template choices, usable plan space, independent inventory scrolling. */
   @media (min-width: 701px) and (orientation: landscape) {
@@ -116,8 +128,12 @@
     .template-strip { min-width:0; gap:8px!important; padding:4px 3px 7px!important; scrollbar-width:thin; touch-action:pan-x; }
     .template-card { flex:0 0 clamp(104px,10vw,136px)!important; min-width:clamp(104px,10vw,136px)!important; height:78px!important; border-radius:11px!important; }
     .template-label { font-size:11px!important; padding:5px 3px!important; }
-    #visualizerInstructions { flex:none!important; margin:0 0 6px!important; padding:6px 9px!important; font-size:10px!important; line-height:1.35!important; }
+    .plan-control-row { gap:8px!important; min-height:42px; }
+    #visualizerInstructions { flex:1 1 auto!important; margin:0 0 6px!important; padding:6px 9px!important; font-size:10px!important; line-height:1.35!important; }
+    #planToolbarHost { margin:0 0 6px!important; }
+    #planLayerHost { margin-bottom:6px!important; }
     #canvasArea { flex:1 1 0%!important; width:100%!important; height:auto!important; min-height:150px!important; max-height:none!important; touch-action:none; border-radius:16px!important; }
+    #planScaleHost { min-height:19px!important; }
     #left-panel > .mt-4 { flex:none!important; margin-top:7px!important; }
     #aiDecorateBtn { min-height:40px!important; padding:7px 18px!important; font-size:12px!important; }
     #aiSuggestion { max-height:56px; overflow:auto; margin-top:5px!important; padding:6px 10px!important; }
@@ -194,9 +210,11 @@
       </div>
     </div>
 
-    <div id="visualizerInstructions" class="mb-2 shrink-0 rounded-xl border border-secondary/15 bg-[#f2f7f1] px-3 py-2 text-[11px] leading-relaxed text-[#395446]">
-      <b class="text-primary">How to use:</b> Choose a room or outdoor scene with open space for your products, then drag items from Live Inventory onto the plan. Drop a plant or pebbles on a pot to layer them; select the pot to separate or replace parts.
+    <div class="plan-control-row">
+      <div id="visualizerInstructions"><span class="plan-help-label">Planner tip</span><span id="planHint">Choose a scene, then tap an inventory item to place it or drag it onto the plan.</span></div>
+      <div id="planToolbarHost" aria-live="polite"></div>
     </div>
+    <div id="planLayerHost" hidden></div>
 
     <div id="canvasArea" class="flex-1 bg-surface-container-low rounded-2xl border-2 border-dashed border-outline-variant/50 relative overflow-hidden flex items-center justify-center transition-all duration-500">
       
@@ -214,6 +232,7 @@
         <p class="text-on-surface-variant text-sm">Choose a real place, arrange plants and pots, and drop optional pebbles inside a pot. Switch to Angled View to see your plan in perspective.</p>
       </div>
     </div>
+    <div id="planScaleHost" aria-label="Garden plan scale" hidden></div>
     
     <div class="mt-4 flex flex-col items-center shrink-0">
       <button onclick="triggerAIDecorate()" id="aiDecorateBtn" disabled class="bg-secondary text-white px-8 py-3 rounded-full font-label-bold shadow-md hover:bg-primary transition-all flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
@@ -556,6 +575,6 @@
     <button id="closeVisualizerGuide" type="button" class="min-h-12 w-full rounded-2xl bg-primary px-5 py-3 font-bold text-white">Start planning</button>
   </div>
 </div>
-<script src="garden_visualizer_3d.js?v=20261004-tablet-layout-v20"></script>
+<script src="garden_visualizer_3d.js?v=20261004-landscape-clean-v21"></script>
 </body>
 </html>
