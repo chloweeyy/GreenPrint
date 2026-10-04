@@ -27,6 +27,8 @@ The owner dashboard has one shared **Water both areas now** control and one shar
 
 The current sketch preserves the supplied tank calibration: 39 cm empty and 24.5 cm full. The AJ-SR04M is read in UART mode at 9600 baud on ESP32 RX GPIO16 and TX GPIO17; set the sensor to UART output mode. If the sensor's TX output is 5 V, add a level shifter before GPIO16. Pump and valve relays use GPIO32 and GPIO33 and turn on together for shared watering. Do not connect Relay IN1 or IN3 directly to GND at the same time as GPIO32 or GPIO33; connect each used input to its GPIO signal and share ground between the ESP32 and relay logic. The solenoid valve is an on/off device and stays energized for the whole watering period; persistent low flow at one nozzle needs a tubing, blockage, pressure, or pump-capacity check.
 
+To build the firmware from a fresh checkout, copy `firmware/secrets.example.h` to `firmware/secrets.h`, fill in the local Wi-Fi and Supabase values, then open `firmware/GreenPrint_ESP32.ino` in Arduino IDE. `secrets.h` is ignored by Git and must remain private.
+
 ## Application flows
 
 - POS and visualizer load active, in-stock catalog rows through `@supabase/supabase-js@2` under the read-only RLS policy, with `get_products.php` as a fallback. Product notes and all transaction/admin data remain server-side.
