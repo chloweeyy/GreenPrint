@@ -203,18 +203,19 @@ try {
             break;
 
         case 'watering':
-            $zone = (string) ($input['zone_name'] ?? '');
+            $zoneId = (string) ($input['zone_id'] ?? '');
             $command = strtoupper((string) ($input['command'] ?? ''));
-            $zoneIds = ['Zone 01 — Indoor' => 'zone1', 'Zone 02 — Outdoor' => 'zone2'];
-            if (!isset($zoneIds[$zone]) || !in_array($command, ['ON', 'OFF'], true)) {
+            $zoneNames = ['zone1' => 'Zone 01 — Indoor', 'zone2' => 'Zone 02 — Outdoor'];
+            if (!isset($zoneNames[$zoneId]) || !in_array($command, ['ON', 'OFF'], true)) {
                 throw new InvalidArgumentException('Choose a valid zone and watering command.');
             }
+            $zoneName = $zoneNames[$zoneId];
             $pdo->beginTransaction();
             $device = $pdo->prepare("INSERT INTO device_commands (zone_id, zone_name, command, status, issued_by) VALUES (:zone_id, :zone_name, :command, 'PENDING', :admin_id)");
-            $device->execute([':zone_id' => $zoneIds[$zone], ':zone_name' => $zone, ':command' => $command, ':admin_id' => $_SESSION['admin_id']]);
+            $device->execute([':zone_id' => $zoneId, ':zone_name' => $zoneName, ':command' => $command, ':admin_id' => $_SESSION['admin_id']]);
             $log = $pdo->prepare('INSERT INTO watering_logs (zone_id, zone_name, status, admin_user_id) VALUES (:zone_id, :zone_name, :status, :admin_id)');
-            $log->execute([':zone_id' => $zoneIds[$zone], ':zone_name' => $zone, ':status' => 'MANUAL_' . $command, ':admin_id' => $_SESSION['admin_id']]);
-            audit_admin($pdo, $currentAdmin, 'watering_command', 'watering_zone', $zoneIds[$zone], ['zone_name' => $zone, 'command' => $command]);
+            $log->execute([':zone_id' => $zoneId, ':zone_name' => $zoneName, ':status' => 'MANUAL_' . $command, ':admin_id' => $_SESSION['admin_id']]);
+            audit_admin($pdo, $currentAdmin, 'watering_command', 'watering_zone', $zoneId, ['zone_name' => $zoneName, 'command' => $command]);
             $pdo->commit();
             $respond(['status' => 'success']);
             break;

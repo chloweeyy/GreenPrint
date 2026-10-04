@@ -181,15 +181,16 @@ async function mutateAction(client, schema, admin, action, input) {
   }
 
   if (action === "watering") {
-    const zone = String(input.zone_name || "");
+    const zoneId = String(input.zone_id || "");
     const command = String(input.command || "").toUpperCase();
-    const zoneIds = { "Zone 01 — Indoor": "zone1", "Zone 02 — Outdoor": "zone2" };
-    if (!zoneIds[zone] || !["ON", "OFF"].includes(command)) return json({ status: "error", message: "Choose a valid zone and watering command." }, 422);
+    const zoneNames = { zone1: "Zone 01 — Indoor", zone2: "Zone 02 — Outdoor" };
+    if (!zoneNames[zoneId] || !["ON", "OFF"].includes(command)) return json({ status: "error", message: "Choose a valid zone and watering command." }, 422);
+    const zoneName = zoneNames[zoneId];
     await client.query("BEGIN");
     try {
-      await client.query("INSERT INTO device_commands (zone_id, zone_name, command, status, issued_by) VALUES ($1, $2, $3, 'PENDING', $4)", [zoneIds[zone], zone, command, admin.admin_id]);
-      await client.query("INSERT INTO watering_logs (zone_id, zone_name, status, admin_user_id) VALUES ($1, $2, $3, $4)", [zoneIds[zone], zone, `MANUAL_${command}`, admin.admin_id]);
-      await writeAudit(client, admin.admin_id, "watering_command", { zone_id: zoneIds[zone], zone_name: zone, command });
+      await client.query("INSERT INTO device_commands (zone_id, zone_name, command, status, issued_by) VALUES ($1, $2, $3, 'PENDING', $4)", [zoneId, zoneName, command, admin.admin_id]);
+      await client.query("INSERT INTO watering_logs (zone_id, zone_name, status, admin_user_id) VALUES ($1, $2, $3, $4)", [zoneId, zoneName, `MANUAL_${command}`, admin.admin_id]);
+      await writeAudit(client, admin.admin_id, "watering_command", { zone_id: zoneId, zone_name: zoneName, command });
       await client.query("COMMIT");
       return json({ status: "success" });
     } catch (error) { await client.query("ROLLBACK"); throw error; }

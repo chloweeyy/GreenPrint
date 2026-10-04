@@ -929,17 +929,20 @@
       '<div class="zone-schedule">Auto schedule: <b>' + escapeHtml(zone.schedule) + '</b></div><div class="gauges">' +
       '<div class="gauge-wrap">' + gaugeSVG(zone.temp, 45, Number(zone.temp) > 30 ? '#d9573f' : '#c98a2b') + '<div class="gauge-value">' + escapeHtml(zone.temp) + '<span class="unit">' + (zone.temp === '--' ? '' : '°C') + '</span></div><div class="gauge-label">Temp</div></div>' +
       '<div class="gauge-wrap">' + gaugeSVG(zone.humidity, 100, '#7fa787') + '<div class="gauge-value">' + escapeHtml(zone.humidity) + '<span class="unit">' + (zone.humidity === '--' ? '' : '%') + '</span></div><div class="gauge-label">Humidity</div></div></div>' +
-      '<div class="zone-actions"><button class="btn btn-water" data-zone="' + zone.id + '" data-command="ON" ' + (zone.watering ? 'disabled' : '') + '>Water now</button>' +
-      '<button class="btn btn-stop" data-zone="' + zone.id + '" data-command="OFF" ' + (zone.watering ? '' : 'disabled') + '>Stop</button>' +
+      '<div class="zone-actions"><button type="button" class="btn btn-water" data-zone="' + zone.id + '" data-command="ON" ' + (zone.watering ? 'disabled' : '') + '>Water now</button>' +
+      '<button type="button" class="btn btn-stop" data-zone="' + zone.id + '" data-command="OFF" ' + (zone.watering ? '' : 'disabled') + '>Stop</button>' +
       '<div class="zone-watering-state ' + (zone.watering ? 'active' : '') + '"><span class="pulse-dot"></span>Watering…</div></div></div>'
     ).join('');
     zoneContainer.querySelectorAll('button[data-zone]').forEach(button => button.addEventListener('click', async () => {
-      const zone = zones.find(item => item.id === button.dataset.zone);
+      const zoneId = button.dataset.zone;
+      const command = button.dataset.command;
+      const zone = zones.find(item => item.id === zoneId);
+      if (!zone || !['zone1', 'zone2'].includes(zoneId) || !['ON', 'OFF'].includes(command)) return;
       const oldState = zone.watering;
-      zone.watering = button.dataset.command === 'ON';
+      zone.watering = command === 'ON';
       renderZones();
       try {
-        await adminRequest('watering', { zone_name: zone.name, command: button.dataset.command });
+        await adminRequest('watering', { zone_id: zoneId, command });
         fetchLiveWateringHistory();
       } catch (error) { zone.watering = oldState; renderZones(); window.alert(error.message || 'Watering command failed.'); }
     }));

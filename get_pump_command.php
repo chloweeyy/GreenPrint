@@ -8,14 +8,17 @@ $zoneId = strtolower(trim((string)($_GET['zone_id'] ?? 'zone1')));
 if (!in_array($zoneId, ['zone1', 'zone2'], true)) json_response(['status' => 'error', 'message' => 'Unknown zone.'], 400);
 try {
     $pdo->beginTransaction();
-    $stmt = $pdo->prepare("SELECT id, command FROM device_commands WHERE zone_id = :zone_id AND status = 'PENDING' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED");
+    $pdo->prepare("UPDATE device_commands SET status = 'SUPERSEDED' WHERE zone_id = :zone_id AND status = 'PENDING' AND id < (SELECT MAX(id) FROM device_commands WHERE zone_id = :latest_zone_id AND status = 'PENDING')")->execute([':zone_id' => $zoneId, ':latest_zone_id' => $zoneId]);
+    $stmt = $pdo->prepare("SELECT id, command FROM device_commands WHERE zone_id = :zone_id AND status = 'PENDING' ORDER BY id DESC LIMIT 1 FOR UPDATE SKIP LOCKED");
     $stmt->execute([':zone_id' => $zoneId]);
     $command = $stmt->fetch();
     if ($command) {
         $pdo->prepare("UPDATE device_commands SET status = 'SENT', processed_at = NOW() WHERE id = :id")->execute([':id' => $command['id']]);
         $result = $command['command'];
     } else {
-        $result = 'OFF';
+        $stmt = $pdo->prepare("SELECT command FROM device_commands WHERE zone_id = :zone_id AND status = 'SENT' ORDER BY id DESC LIMIT 1");
+        $stmt->execute([':zone_id' => $zoneId]);
+        $result = $stmt->fetchColumn() ?: 'OFF';
     }
     $pdo->commit();
     json_response(['status' => 'success', 'zone_id' => $zoneId, 'command' => $result]);
