@@ -35,6 +35,8 @@ function getTimeZone() {
 async function ensureSchedulerSchema(client) {
   const column = await client.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'watering_schedules' AND column_name = 'duration_minutes') AS exists");
   if (!column.rows[0].exists) await client.query("ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 1");
+  await client.query("ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_seconds INTEGER NOT NULL DEFAULT 60");
+  await client.query("ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS auto_stop_seconds INTEGER");
   const table = await client.query("SELECT to_regclass('public.watering_schedule_runs') IS NOT NULL AS exists");
   if (!table.rows[0].exists) {
     await client.query(`CREATE TABLE IF NOT EXISTS watering_schedule_runs (
@@ -49,18 +51,17 @@ async function ensureSchedulerSchema(client) {
   }
 }
 
-async function queueSharedCommand(client, command) {
+async function queueSharedCommand(client, command, autoStopSeconds = null) {
   await client.query(
-    "INSERT INTO device_commands (zone_id, zone_name, command, status) VALUES ('zone1', 'Shared irrigation — both areas', $1, 'PENDING')",
-    [command]
+    "INSERT INTO device_commands (zone_id, zone_name, command, status, auto_stop_seconds) VALUES ('zone1', 'Shared irrigation — both areas', $1, 'PENDING', $2)",
+    [command, autoStopSeconds]
   );
 }
 
-async function logScheduledCommand(client, slot, command) {
-  const runName = slot === "zone1" ? "Daily run 1" : "Daily run 2";
+async function logScheduledCommand(client, command) {
   await client.query(
-    "INSERT INTO watering_logs (zone_id, zone_name, status) VALUES ($1, $2, $3)",
-    [slot, `Shared irrigation — ${runName}`, `AUTO_${command}`]
+    "INSERT INTO watering_logs (zone_id, zone_name, status) VALUES ('zone1', 'Shared daily watering — both areas', $1)",
+    [`AUTO_${command}`]
   );
 }
 
@@ -81,6 +82,15 @@ export default async function wateringScheduler() {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(hashtext('greenprint-shared-watering-scheduler'))");
 
+    await client.query("UPDATE watering_schedules SET enabled = FALSE WHERE zone_id = 'zone2'");
+    const legacyRuns = await client.query(
+      "UPDATE watering_schedule_runs SET status = 'CANCELLED', finished_at = NOW() WHERE schedule_slot = 'zone2' AND status = 'RUNNING' RETURNING schedule_slot"
+    );
+    if (legacyRuns.rows.length) {
+      await queueSharedCommand(client, "OFF");
+      for (const _row of legacyRuns.rows) await logScheduledCommand(client, "OFF");
+    }
+
     const now = new Date();
     const local = localClock(now, getTimeZone());
     const expired = await client.query(
@@ -94,14 +104,14 @@ export default async function wateringScheduler() {
           "UPDATE watering_schedule_runs SET status = 'DONE', finished_at = $1::timestamptz WHERE schedule_slot = $2 AND run_date = $3::date AND status = 'RUNNING'",
           [now.toISOString(), row.schedule_slot, row.run_date]
         );
-        await logScheduledCommand(client, row.schedule_slot, "OFF");
+        await logScheduledCommand(client, "OFF");
       }
     }
 
-    const active = await client.query("SELECT 1 FROM watering_schedule_runs WHERE status = 'RUNNING' LIMIT 1");
+    const active = await client.query("SELECT 1 FROM watering_schedule_runs WHERE schedule_slot = 'zone1' AND status = 'RUNNING' LIMIT 1");
     if (!active.rows.length) {
       const schedules = await client.query(
-        "SELECT zone_id, schedule_time, duration_minutes FROM watering_schedules WHERE enabled IS TRUE AND zone_id IN ('zone1', 'zone2') ORDER BY schedule_time, zone_id FOR UPDATE"
+        "SELECT zone_id, schedule_time, duration_seconds FROM watering_schedules WHERE enabled IS TRUE AND zone_id = 'zone1' ORDER BY schedule_time FOR UPDATE"
       );
       for (const schedule of schedules.rows) {
         const match = String(schedule.schedule_time || "").match(/^(\d{1,2}):(\d{2})/);
@@ -110,18 +120,18 @@ export default async function wateringScheduler() {
         const minutesLate = local.minuteOfDay - scheduledMinute;
         if (minutesLate < 0 || minutesLate > 1) continue;
 
-        const duration = Math.max(1, Math.min(60, Number(schedule.duration_minutes) || 1));
+        const durationSeconds = Number(schedule.duration_seconds) === 30 ? 30 : 60;
         const started = await client.query(
           `INSERT INTO watering_schedule_runs (schedule_slot, run_date, started_at, stops_at, status)
-           VALUES ($1, $2::date, $3::timestamptz, $3::timestamptz + ($4::integer * INTERVAL '1 minute'), 'RUNNING')
+           VALUES ($1, $2::date, $3::timestamptz, $3::timestamptz + ($4::integer * INTERVAL '1 second'), 'RUNNING')
            ON CONFLICT (schedule_slot, run_date) DO NOTHING
            RETURNING schedule_slot`,
-          [schedule.zone_id, local.date, now.toISOString(), duration]
+          [schedule.zone_id, local.date, now.toISOString(), durationSeconds]
         );
         if (!started.rows.length) continue;
 
-        await queueSharedCommand(client, "ON");
-        await logScheduledCommand(client, schedule.zone_id, "ON");
+        await queueSharedCommand(client, "ON", durationSeconds);
+        await logScheduledCommand(client, "ON");
         break;
       }
     }

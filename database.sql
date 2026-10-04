@@ -204,6 +204,7 @@ CREATE TABLE IF NOT EXISTS device_commands (
     zone_name TEXT NOT NULL,
     command TEXT NOT NULL CHECK (command IN ('ON', 'OFF')),
     status TEXT NOT NULL DEFAULT 'PENDING',
+    auto_stop_seconds INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     acknowledged_at TIMESTAMPTZ,
     processed_at TIMESTAMPTZ,
@@ -213,6 +214,7 @@ ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS zone_id TEXT NOT NULL DEFAU
 ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS zone_name TEXT NOT NULL DEFAULT 'Zone 01 — Indoor';
 ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS command TEXT;
 ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'PENDING';
+ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS auto_stop_seconds INTEGER;
 ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS acknowledged_at TIMESTAMPTZ;
 ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ;
@@ -239,12 +241,14 @@ CREATE TABLE IF NOT EXISTS watering_schedules (
     zone_id TEXT NOT NULL UNIQUE,
     schedule_time TEXT NOT NULL,
     duration_minutes INTEGER NOT NULL DEFAULT 1,
+    duration_seconds INTEGER NOT NULL DEFAULT 60,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS zone_id TEXT NOT NULL DEFAULT 'zone1';
 ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS schedule_time TEXT NOT NULL DEFAULT '06:00';
 ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_seconds INTEGER NOT NULL DEFAULT 60;
 ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 CREATE UNIQUE INDEX IF NOT EXISTS watering_schedules_zone_unique_idx ON watering_schedules (zone_id);
@@ -260,8 +264,9 @@ CREATE TABLE IF NOT EXISTS watering_schedule_runs (
 );
 
 INSERT INTO watering_schedules (zone_id, schedule_time) VALUES
-    ('zone1', '06:00'), ('zone2', '07:00')
+    ('zone1', '06:00')
 ON CONFLICT (zone_id) DO NOTHING;
+UPDATE watering_schedules SET enabled = FALSE WHERE zone_id = 'zone2';
 
 -- The browser reaches inventory through the PHP API. Restrict PostgREST access
 -- to public, active, in-stock catalog reads and block direct table access elsewhere.

@@ -9,6 +9,9 @@ const categoryPrefix = { indoor: "IN", outdoor: "OUT", pots: "POT", pebbles: "PB
 async function ensureWateringSchema(client) {
   const column = await client.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'watering_schedules' AND column_name = 'duration_minutes') AS exists");
   if (!column.rows[0].exists) await client.query("ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 1");
+  await client.query("ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_seconds INTEGER NOT NULL DEFAULT 60");
+  await client.query("ALTER TABLE device_commands ADD COLUMN IF NOT EXISTS auto_stop_seconds INTEGER");
+  await client.query("UPDATE watering_schedules SET enabled = FALSE WHERE zone_id = 'zone2'");
   const table = await client.query("SELECT to_regclass('public.watering_schedule_runs') IS NOT NULL AS exists");
   if (!table.rows[0].exists) {
     await client.query(`CREATE TABLE IF NOT EXISTS watering_schedule_runs (
@@ -55,7 +58,7 @@ async function readAction(client, schema, action, query = new URLSearchParams())
       result = await client.query("SELECT il.created_at, p.name AS product_name, il.change_amount, il.reason FROM inventory_logs il LEFT JOIN products p ON p.id = il.product_id ORDER BY il.created_at DESC LIMIT 100");
       break;
     case "schedules":
-      result = await client.query("SELECT zone_id, schedule_time, duration_minutes FROM watering_schedules WHERE zone_id IN ('zone1', 'zone2') ORDER BY zone_id");
+      result = await client.query("SELECT zone_id, schedule_time, duration_seconds FROM watering_schedules WHERE zone_id = 'zone1' LIMIT 1");
       break;
     case "watering_state":
       result = await client.query("SELECT command, created_at FROM device_commands WHERE zone_id = 'zone1' ORDER BY id DESC LIMIT 1");
@@ -195,24 +198,14 @@ async function mutateAction(client, schema, admin, action, input) {
     await ensureWateringSchema(client);
     const zoneId = String(input.zone_id || "");
     const time = String(input.schedule_time || "").trim();
-    const duration = Number(input.duration_minutes || 1);
-    if (!["zone1", "zone2"].includes(zoneId) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
-      || !Number.isInteger(duration) || duration < 1 || duration > 60) {
-      return json({ status: "error", message: "Choose a valid daily run, time, and duration from 1 to 60 minutes." }, 422);
+    const durationSeconds = Number(input.duration_seconds || 60);
+    if (zoneId !== "zone1" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+      || ![30, 60].includes(durationSeconds)) {
+      return json({ status: "error", message: "Choose a valid shared daily time and a watering duration of 30 or 60 seconds." }, 422);
     }
-    const other = await client.query("SELECT schedule_time, duration_minutes FROM watering_schedules WHERE zone_id <> $1 AND enabled IS TRUE LIMIT 1", [zoneId]);
-    if (other.rows.length) {
-      const toMinute = (value) => { const [hour, minute] = String(value).slice(0, 5).split(":").map(Number); return hour * 60 + minute; };
-      const newMinute = toMinute(time);
-      const otherMinute = toMinute(other.rows[0].schedule_time);
-      const minutesNewAfterOther = (newMinute - otherMinute + 1440) % 1440;
-      const minutesOtherAfterNew = (otherMinute - newMinute + 1440) % 1440;
-      if (minutesNewAfterOther < Number(other.rows[0].duration_minutes) + 1 || minutesOtherAfterNew < duration + 1) {
-        return json({ status: "error", message: "Separate the daily runs enough for each watering runtime to finish before the next run." }, 422);
-      }
-    }
-    await client.query("INSERT INTO watering_schedules (zone_id, schedule_time, duration_minutes, enabled, updated_at) VALUES ($1, $2, $3, TRUE, NOW()) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time, duration_minutes = EXCLUDED.duration_minutes, enabled = TRUE, updated_at = NOW()", [zoneId, time, duration]);
-    await writeAudit(client, admin.admin_id, "save_schedule", { schedule_slot: zoneId, time, duration_minutes: duration });
+    await client.query("UPDATE watering_schedules SET enabled = FALSE WHERE zone_id = 'zone2'");
+    await client.query("INSERT INTO watering_schedules (zone_id, schedule_time, duration_seconds, enabled, updated_at) VALUES ($1, $2, $3, TRUE, NOW()) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time, duration_seconds = EXCLUDED.duration_seconds, enabled = TRUE, updated_at = NOW()", [zoneId, time, durationSeconds]);
+    await writeAudit(client, admin.admin_id, "save_schedule", { schedule_slot: "shared", time, duration_seconds: durationSeconds });
     return json({ status: "success" });
   }
 

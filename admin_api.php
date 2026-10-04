@@ -29,7 +29,9 @@ try {
                 $data = $pdo->query('SELECT il.created_at, p.name AS product_name, il.change_amount, il.reason FROM inventory_logs il LEFT JOIN products p ON p.id = il.product_id ORDER BY il.created_at DESC LIMIT 100')->fetchAll();
                 break;
             case 'schedules':
-                $data = $pdo->query("SELECT zone_id, schedule_time, duration_minutes FROM watering_schedules WHERE zone_id IN ('zone1', 'zone2') ORDER BY zone_id")->fetchAll();
+                $pdo->exec('ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_seconds INTEGER NOT NULL DEFAULT 60');
+                $pdo->exec("UPDATE watering_schedules SET enabled = FALSE WHERE zone_id = 'zone2'");
+                $data = $pdo->query("SELECT zone_id, schedule_time, duration_seconds FROM watering_schedules WHERE zone_id = 'zone1' LIMIT 1")->fetchAll();
                 break;
             case 'watering_state':
                 $data = $pdo->query("SELECT command, created_at FROM device_commands WHERE zone_id = 'zone1' ORDER BY id DESC LIMIT 1")->fetchAll();
@@ -196,13 +198,15 @@ try {
         case 'save_schedule':
             $zoneId = (string) ($input['zone_id'] ?? '');
             $time = trim((string) ($input['schedule_time'] ?? ''));
-            $duration = filter_var($input['duration_minutes'] ?? 1, FILTER_VALIDATE_INT);
-            if (!in_array($zoneId, ['zone1', 'zone2'], true) || !preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $time) || $duration === false || $duration < 1 || $duration > 60) {
-                throw new InvalidArgumentException('Choose a valid daily run, time, and duration from 1 to 60 minutes.');
+            $durationSeconds = filter_var($input['duration_seconds'] ?? 60, FILTER_VALIDATE_INT);
+            if ($zoneId !== 'zone1' || !preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $time) || !in_array($durationSeconds, [30, 60], true)) {
+                throw new InvalidArgumentException('Choose a valid shared daily time and a watering duration of 30 or 60 seconds.');
             }
-            $stmt = $pdo->prepare('INSERT INTO watering_schedules (zone_id, schedule_time, duration_minutes, enabled, updated_at) VALUES (:zone_id, :schedule_time, :duration, TRUE, NOW()) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time, duration_minutes = EXCLUDED.duration_minutes, enabled = TRUE, updated_at = NOW()');
-            $stmt->execute([':zone_id' => $zoneId, ':schedule_time' => $time, ':duration' => $duration]);
-            audit_admin($pdo, $currentAdmin, 'save_schedule', 'watering_schedule', $zoneId, ['time' => $time, 'duration_minutes' => $duration]);
+            $pdo->exec('ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_seconds INTEGER NOT NULL DEFAULT 60');
+            $pdo->exec("UPDATE watering_schedules SET enabled = FALSE WHERE zone_id = 'zone2'");
+            $stmt = $pdo->prepare('INSERT INTO watering_schedules (zone_id, schedule_time, duration_seconds, enabled, updated_at) VALUES (:zone_id, :schedule_time, :duration, TRUE, NOW()) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time, duration_seconds = EXCLUDED.duration_seconds, enabled = TRUE, updated_at = NOW()');
+            $stmt->execute([':zone_id' => $zoneId, ':schedule_time' => $time, ':duration' => $durationSeconds]);
+            audit_admin($pdo, $currentAdmin, 'save_schedule', 'watering_schedule', $zoneId, ['time' => $time, 'duration_seconds' => $durationSeconds]);
             $respond(['status' => 'success']);
             break;
 

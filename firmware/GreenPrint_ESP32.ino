@@ -51,6 +51,7 @@ bool  waterLevelValid = false;
 bool  pumpOn       = false;
 bool  valveOn      = false;
 bool  irrigationActive = false;
+unsigned long irrigationAutoStopAt = 0;
 String lastCommand  = "";
 
 unsigned long lastPush = 0;
@@ -137,6 +138,8 @@ void readSensors() {
   if (dist > 0 && TANK_EMPTY_DISTANCE_CM > TANK_FULL_DISTANCE_CM &&
       TANK_FULL_DISTANCE_CM >= SONAR_MIN_VALID_DISTANCE_CM) {
     // A smaller sensor-to-water distance means a fuller tank.
+    // Keep the earlier inverse-distance formula, but use tank endpoints.
+    // The AJ-SR04M cannot reliably measure a 5 cm full distance.
     float percent = 100.0f * (TANK_EMPTY_DISTANCE_CM - dist)
                     / (TANK_EMPTY_DISTANCE_CM - TANK_FULL_DISTANCE_CM);
     waterLevel = (int)roundf(constrain(percent, 0.0f, 100.0f));
@@ -179,7 +182,8 @@ void pushToSupabase() {
 }
 
 void applyWateringOutputs() {
-  // One shared Water Now command operates the pump and common valve.
+  // The common solenoid is fully energized (on/off, no PWM) for the whole
+  // shared watering period, at the same time as the pump.
   pumpOn = irrigationActive;
   valveOn = irrigationActive;
   digitalWrite(PUMP_PIN, pumpOn ? RELAY_ON : RELAY_OFF);
@@ -191,8 +195,22 @@ void applyWateringCommand(const String& payload) {
   lastCommand = payload;
   if (payload.indexOf("\"ON\"") >= 0) {
     irrigationActive = true;
+    int keyAt = payload.indexOf("\"auto_stop_seconds\":");
+    int seconds = 0;
+    if (keyAt >= 0) {
+      int valueAt = keyAt + 20;
+      while (valueAt < payload.length() && payload[valueAt] == ' ') valueAt++;
+      if (valueAt < payload.length() && payload[valueAt] >= '0' && payload[valueAt] <= '9') {
+        int valueEnd = valueAt;
+        while (valueEnd < payload.length() && payload[valueEnd] >= '0' && payload[valueEnd] <= '9') valueEnd++;
+        seconds = payload.substring(valueAt, valueEnd).toInt();
+      }
+    }
+    irrigationAutoStopAt = (seconds == 30 || seconds == 60)
+      ? millis() + (unsigned long)seconds * 1000UL : 0;
   } else if (payload.indexOf("\"OFF\"") >= 0) {
     irrigationActive = false;
+    irrigationAutoStopAt = 0;
   } else {
     return;
   }
@@ -209,7 +227,7 @@ void pollWateringCommand() {
   url += SUPABASE_HOST;
   url += "/rest/v1/device_commands?zone_id=eq.";
   url += "zone1";
-  url += "&order=id.desc&limit=1&select=command,id";
+  url += "&order=id.desc&limit=1&select=command,id,auto_stop_seconds";
   http.begin(*client, url);
   http.addHeader("apikey", SUPABASE_KEY);
   http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
@@ -251,10 +269,10 @@ void handleRoot() {
   server.send(200, "text/html", html);
 }
 
-void handlePumpOn()   { irrigationActive = true;  applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
-void handlePumpOff()  { irrigationActive = false; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
-void handleValveOn()  { irrigationActive = true;  applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
-void handleValveOff() { irrigationActive = false; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handlePumpOn()   { irrigationActive = true;  irrigationAutoStopAt = 0; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handlePumpOff()  { irrigationActive = false; irrigationAutoStopAt = 0; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handleValveOn()  { irrigationActive = true;  irrigationAutoStopAt = 0; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handleValveOff() { irrigationActive = false; irrigationAutoStopAt = 0; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
 
 void setup() {
   pinMode(PUMP_PIN,  OUTPUT);
@@ -282,6 +300,12 @@ void setup() {
 void loop() {
   server.handleClient();
   unsigned long now = millis();
+  if (irrigationAutoStopAt != 0 && (int32_t)(now - irrigationAutoStopAt) >= 0) {
+    irrigationAutoStopAt = 0;
+    irrigationActive = false;
+    applyWateringOutputs();
+    Serial.println("Scheduled watering duration reached; pump and valve OFF");
+  }
   if (now - lastPush >= PUSH_INTERVAL) { readSensors(); pushToSupabase(); lastPush = now; }
   if (now - lastPoll >= POLL_INTERVAL) { pollCommand(); lastPoll = now; }
 }

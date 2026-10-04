@@ -368,20 +368,14 @@
       <div style="overflow-x: auto;">
         <table class="history">
           <thead>
-            <tr><th>Shared watering run</th><th>Frequency</th><th>Preset Time</th><th>Runtime</th></tr>
+            <tr><th>Schedule</th><th>Frequency</th><th>Preset Time</th><th>Watering duration</th></tr>
           </thead>
           <tbody id="scheduleTableBody">
             <tr>
-              <td><b>Daily run 1 — both areas</b></td>
+              <td><b>Shared watering — both areas</b></td>
               <td>Daily</td>
-              <td id="schedRun1Time">06:00 AM</td>
-              <td id="schedRun1Duration">1 minute</td>
-            </tr>
-            <tr>
-              <td><b>Daily run 2 — both areas</b></td>
-              <td>Daily</td>
-              <td id="schedRun2Time">07:00 AM</td>
-              <td id="schedRun2Duration">1 minute</td>
+              <td id="schedTime">06:00 AM</td>
+              <td id="schedDurationDisplay">1 minute</td>
             </tr>
           </tbody>
         </table>
@@ -537,20 +531,16 @@
     <h3 class="display" style="margin-top:0;">Adjust Watering Schedule</h3>
     <form id="scheduleForm" style="display:flex; flex-direction:column; gap:14px;" onsubmit="saveSchedule(event)">
       <div>
-        <label style="font-size:12px; font-weight:700; color:var(--ink-muted);">Select daily run</label>
-        <select id="schedSlotSelect" style="width:100%; padding:10px; border:1px solid var(--card-border); border-radius:8px;">
-          <option value="zone1">Daily run 1</option>
-          <option value="zone2">Daily run 2</option>
-        </select>
-      </div>
-      <div>
-        <label style="font-size:12px; font-weight:700; color:var(--ink-muted);">Select Time (24-Hour / Numeric)</label>
+        <label for="schedInputTime" style="font-size:12px; font-weight:700; color:var(--ink-muted);">Daily watering time</label>
         <input type="time" id="schedInputTime" required style="width:100%; padding:10px; border:1px solid var(--card-border); border-radius:8px;">
       </div>
       <div>
-        <label for="schedDuration" style="font-size:12px; font-weight:700; color:var(--ink-muted);">Watering runtime (minutes; auto-stop)</label>
-        <input type="number" id="schedDuration" min="1" max="60" value="1" required style="width:100%; padding:10px; border:1px solid var(--card-border); border-radius:8px;">
-        <small style="color:var(--ink-muted);">Scheduled runs start both areas and stop automatically after this time. Set 1 minute for the first test.</small>
+        <label for="schedDuration" style="font-size:12px; font-weight:700; color:var(--ink-muted);">Watering duration</label>
+        <select id="schedDuration" style="width:100%; padding:10px; border:1px solid var(--card-border); border-radius:8px;">
+          <option value="30">30 seconds</option>
+          <option value="60" selected>1 minute</option>
+        </select>
+        <small style="color:var(--ink-muted);">Both areas water together, then the ESP32 stops automatically after the selected duration.</small>
       </div>
       <div style="display:flex; gap:10px; margin-top:10px;">
         <button type="submit" class="btn btn-water" style="flex:1; justify-content:center;">Update Schedule</button>
@@ -590,10 +580,7 @@
   ];
   let sharedWateringActive = false;
   let sharedWateringPending = false;
-  const wateringSchedules = {
-    zone1: { schedule_time: '06:00', duration_minutes: 1 },
-    zone2: { schedule_time: '07:00', duration_minutes: 1 }
-  };
+  const wateringSchedule = { schedule_time: '06:00', duration_seconds: 60 };
 
   async function adminRequest(action, payload, query = {}) {
     const options = { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } };
@@ -662,20 +649,12 @@
 
   async function fetchWateringSchedules() {
     const data = await adminRequest('schedules') || [];
-    data.forEach(item => {
-      const index = item.zone_id === 'zone1' ? 0 : item.zone_id === 'zone2' ? 1 : -1;
-      if (index < 0) return;
-      wateringSchedules[item.zone_id] = {
-        schedule_time: String(item.schedule_time || '06:00').slice(0, 5),
-        duration_minutes: Number(item.duration_minutes) || 1
-      };
-      const suffix = index === 0 ? '1' : '2';
-      const timeTarget = document.getElementById('schedRun' + suffix + 'Time');
-      const durationTarget = document.getElementById('schedRun' + suffix + 'Duration');
-      if (timeTarget) timeTarget.textContent = formatScheduleTime(item.schedule_time);
-      if (durationTarget) durationTarget.textContent = wateringSchedules[item.zone_id].duration_minutes + ' minute' + (wateringSchedules[item.zone_id].duration_minutes === 1 ? '' : 's');
-    });
-    renderZones();
+    const item = data.find(schedule => schedule.zone_id === 'zone1');
+    if (!item) return;
+    wateringSchedule.schedule_time = String(item.schedule_time || '06:00').slice(0, 5);
+    wateringSchedule.duration_seconds = Number(item.duration_seconds) === 30 ? 30 : 60;
+    document.getElementById('schedTime').textContent = formatScheduleTime(item.schedule_time);
+    document.getElementById('schedDurationDisplay').textContent = wateringSchedule.duration_seconds === 30 ? '30 seconds' : '1 minute';
   }
 
   async function fetchLiveLowStock() {
@@ -1002,29 +981,22 @@
   document.getElementById('waterBothButton')?.addEventListener('click', () => setSharedWatering('ON'));
   document.getElementById('stopBothButton')?.addEventListener('click', () => setSharedWatering('OFF'));
 
-  function fillScheduleForm() {
-    const slot = document.getElementById('schedSlotSelect').value;
-    const schedule = wateringSchedules[slot] || wateringSchedules.zone1;
-    document.getElementById('schedInputTime').value = schedule.schedule_time;
-    document.getElementById('schedDuration').value = schedule.duration_minutes;
-  }
   function openScheduleModal() {
-    fillScheduleForm();
+    document.getElementById('schedInputTime').value = wateringSchedule.schedule_time;
+    document.getElementById('schedDuration').value = String(wateringSchedule.duration_seconds);
     document.getElementById('scheduleModal').style.display = 'flex';
   }
   function closeScheduleModal() { document.getElementById('scheduleModal').style.display = 'none'; }
-  document.getElementById('schedSlotSelect')?.addEventListener('change', fillScheduleForm);
   async function saveSchedule(event) {
     event.preventDefault();
-    const zoneId = document.getElementById('schedSlotSelect').value;
     const time = document.getElementById('schedInputTime').value;
-    const duration = Number(document.getElementById('schedDuration').value);
+    const durationSeconds = Number(document.getElementById('schedDuration').value);
     try {
-      await adminRequest('save_schedule', { zone_id: zoneId, schedule_time: time, duration_minutes: duration });
-      wateringSchedules[zoneId] = { schedule_time: time, duration_minutes: duration };
-      const suffix = zoneId === 'zone1' ? '1' : '2';
-      document.getElementById('schedRun' + suffix + 'Time').textContent = formatScheduleTime(time);
-      document.getElementById('schedRun' + suffix + 'Duration').textContent = duration + ' minute' + (duration === 1 ? '' : 's');
+      await adminRequest('save_schedule', { zone_id: 'zone1', schedule_time: time, duration_seconds: durationSeconds });
+      wateringSchedule.schedule_time = time;
+      wateringSchedule.duration_seconds = durationSeconds;
+      document.getElementById('schedTime').textContent = formatScheduleTime(time);
+      document.getElementById('schedDurationDisplay').textContent = durationSeconds === 30 ? '30 seconds' : '1 minute';
       closeScheduleModal();
     } catch (error) { window.alert(error.message || 'Watering schedule could not be saved.'); }
   }
