@@ -238,14 +238,26 @@ CREATE TABLE IF NOT EXISTS watering_schedules (
     id BIGSERIAL PRIMARY KEY,
     zone_id TEXT NOT NULL UNIQUE,
     schedule_time TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL DEFAULT 1,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS zone_id TEXT NOT NULL DEFAULT 'zone1';
 ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS schedule_time TEXT NOT NULL DEFAULT '06:00';
+ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 CREATE UNIQUE INDEX IF NOT EXISTS watering_schedules_zone_unique_idx ON watering_schedules (zone_id);
+
+CREATE TABLE IF NOT EXISTS watering_schedule_runs (
+    schedule_slot TEXT NOT NULL CHECK (schedule_slot IN ('zone1', 'zone2')),
+    run_date DATE NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    stops_at TIMESTAMPTZ NOT NULL,
+    status TEXT NOT NULL DEFAULT 'RUNNING' CHECK (status IN ('RUNNING', 'DONE', 'CANCELLED')),
+    finished_at TIMESTAMPTZ,
+    PRIMARY KEY (schedule_slot, run_date)
+);
 
 INSERT INTO watering_schedules (zone_id, schedule_time) VALUES
     ('zone1', '06:00'), ('zone2', '07:00')

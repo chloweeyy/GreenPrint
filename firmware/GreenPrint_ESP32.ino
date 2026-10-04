@@ -23,9 +23,13 @@ const char* SUPABASE_KEY = GP_SUPABASE_KEY;
 #define DHT_PIN      22
 #define DHT_TYPE     DHT22
 #define SONAR_TRIG   13
-#define SONAR_ECHO   27
+#define SONAR_ECHO   12
 #define RELAY_ON     HIGH
 #define RELAY_OFF    LOW
+// GPIO12 matches the documented wiring and is an ESP32 boot-strapping pin.
+// Keep the AJ-SR04M ECHO line low during reset and use a divider/level shifter
+// so the ESP32 input never exceeds 3.3 V (for example, 10k from ECHO to GPIO12
+// and 20k from GPIO12 to GND when the sensor's ECHO high level is 5 V).
 // AJ-SR04M readings inside its 20 cm blind zone are unreliable. Keep a small
 // margin and mount the probe at least 5 cm above the tank rim. For the 39 cm
 // tank with a maximum water depth of about half its height, these are initial
@@ -43,12 +47,11 @@ WebServer server(80);
 float temperature  = 0;
 float humidity     = 0;
 int   waterLevel   = 0;
+bool  waterLevelValid = false;
 bool  pumpOn       = false;
 bool  valveOn      = false;
-bool  zone1Active  = false;
-bool  zone2Active  = false;
+bool  irrigationActive = false;
 String lastCommand  = "";
-String lastCommand2 = "";
 
 unsigned long lastPush = 0;
 unsigned long lastPoll = 0;
@@ -129,6 +132,7 @@ void readSensors() {
   float h = dht.readHumidity();
   if (!isnan(t)) temperature = t;
   if (!isnan(h)) humidity    = h;
+  waterLevelValid = false;
   float dist = readStableSonar();
   if (dist > 0 && TANK_EMPTY_DISTANCE_CM > TANK_FULL_DISTANCE_CM &&
       TANK_FULL_DISTANCE_CM >= SONAR_MIN_VALID_DISTANCE_CM) {
@@ -136,9 +140,15 @@ void readSensors() {
     float percent = 100.0f * (TANK_EMPTY_DISTANCE_CM - dist)
                     / (TANK_EMPTY_DISTANCE_CM - TANK_FULL_DISTANCE_CM);
     waterLevel = (int)roundf(constrain(percent, 0.0f, 100.0f));
+    waterLevelValid = true;
   }
-  Serial.printf("Temp: %.1f | Humidity: %.0f | Water: %d%% (%.1fcm)\n",
-    temperature, humidity, waterLevel, dist);
+  if (waterLevelValid) {
+    Serial.printf("Temp: %.1f | Humidity: %.0f | Water: %d%% (%.1fcm)\n",
+      temperature, humidity, waterLevel, dist);
+  } else {
+    Serial.printf("Temp: %.1f | Humidity: %.0f | Water: NO VALID READING (%.1fcm)\n",
+      temperature, humidity, dist);
+  }
 }
 
 void pushToSupabase() {
@@ -157,7 +167,9 @@ void pushToSupabase() {
   String body = "{";
   body += "\"temperature\":" + String(temperature, 1) + ",";
   body += "\"humidity\":"    + String(humidity, 0)    + ",";
-  body += "\"water_level\":" + String(waterLevel);
+  body += "\"water_level\":";
+  if (waterLevelValid) body += String(waterLevel);
+  else body += "null";
   body += "}";
   int code = http.POST(body);
   Serial.print("Supabase push: HTTP ");
@@ -167,37 +179,36 @@ void pushToSupabase() {
 }
 
 void applyWateringOutputs() {
-  // Both logical zones currently share one pump and one valve.
-  bool anyZoneActive = zone1Active || zone2Active;
-  pumpOn = anyZoneActive;
-  valveOn = anyZoneActive;
+  // One shared Water Now command operates the pump and common valve.
+  pumpOn = irrigationActive;
+  valveOn = irrigationActive;
   digitalWrite(PUMP_PIN, pumpOn ? RELAY_ON : RELAY_OFF);
   digitalWrite(VALVE_PIN, valveOn ? RELAY_ON : RELAY_OFF);
 }
 
-void applyZoneCommand(const String& payload, String& lastPayload, bool& zoneActive, const char* label) {
-  if (payload == lastPayload) return;
-  lastPayload = payload;
+void applyWateringCommand(const String& payload) {
+  if (payload == lastCommand) return;
+  lastCommand = payload;
   if (payload.indexOf("\"ON\"") >= 0) {
-    zoneActive = true;
+    irrigationActive = true;
   } else if (payload.indexOf("\"OFF\"") >= 0) {
-    zoneActive = false;
+    irrigationActive = false;
   } else {
     return;
   }
   applyWateringOutputs();
-  Serial.printf("%s %s | Pump %s | Valve %s\n", label,
-    zoneActive ? "ON" : "OFF", pumpOn ? "ON" : "OFF", valveOn ? "ON" : "OFF");
+  Serial.printf("Shared watering %s | Pump %s | Valve %s\n",
+    irrigationActive ? "ON" : "OFF", pumpOn ? "ON" : "OFF", valveOn ? "ON" : "OFF");
 }
 
-void pollZone(const char* zoneId, String& lastPayload, bool& zoneActive, const char* label) {
+void pollWateringCommand() {
   WiFiClientSecure* client = new WiFiClientSecure;
   client->setInsecure();
   HTTPClient http;
   String url = "https://";
   url += SUPABASE_HOST;
   url += "/rest/v1/device_commands?zone_id=eq.";
-  url += zoneId;
+  url += "zone1";
   url += "&order=id.desc&limit=1&select=command,id";
   http.begin(*client, url);
   http.addHeader("apikey", SUPABASE_KEY);
@@ -205,10 +216,10 @@ void pollZone(const char* zoneId, String& lastPayload, bool& zoneActive, const c
   int code = http.GET();
   if (code == 200) {
     String payload = http.getString();
-    Serial.printf("%s Command: %s\n", label, payload.c_str());
-    applyZoneCommand(payload, lastPayload, zoneActive, label);
+    Serial.printf("Shared watering command: %s\n", payload.c_str());
+    applyWateringCommand(payload);
   } else {
-    Serial.printf("%s command poll failed: HTTP %d\n", label, code);
+    Serial.printf("Shared watering command poll failed: HTTP %d\n", code);
   }
   http.end();
   delete client;
@@ -216,8 +227,7 @@ void pollZone(const char* zoneId, String& lastPayload, bool& zoneActive, const c
 
 void pollCommand() {
   if (WiFi.status() != WL_CONNECTED) return;
-  pollZone("zone1", lastCommand, zone1Active, "Zone 1");
-  pollZone("zone2", lastCommand2, zone2Active, "Zone 2");
+  pollWateringCommand();
 }
 
 void handleRoot() {
@@ -231,21 +241,20 @@ void handleRoot() {
   html += "<h2>GreenPrint Local</h2>";
   html += "<div class='card'><b>Temperature:</b> " + String(temperature, 1) + " C<br>";
   html += "<b>Humidity:</b> " + String(humidity, 0) + " %<br>";
-  html += "<b>Water level:</b> " + String(waterLevel) + " %</div>";
-  html += "<div class='card'><b>Pump:</b> " + String(pumpOn ? "ON" : "OFF") + "<br>";
-  html += "<a href='/pump/on'><button class='btn btn-on'>Water Now (Pump)</button></a>";
-  html += "<a href='/pump/off'><button class='btn btn-off'>Stop Pump</button></a></div>";
-  html += "<div class='card'><b>Valve:</b> " + String(valveOn ? "ON" : "OFF") + "<br>";
-  html += "<a href='/valve/on'><button class='btn btn-on'>Open Valve</button></a>";
-  html += "<a href='/valve/off'><button class='btn btn-off'>Close Valve</button></a></div>";
+  html += "<b>Water level:</b> ";
+  html += waterLevelValid ? String(waterLevel) + " %" : String("No valid reading");
+  html += "</div>";
+  html += "<div class='card'><b>Shared watering:</b> " + String(pumpOn ? "ON" : "OFF") + "<br>";
+  html += "<a href='/pump/on'><button class='btn btn-on'>Water both areas now</button></a>";
+  html += "<a href='/pump/off'><button class='btn btn-off'>Stop watering</button></a></div>";
   html += "</body></html>";
   server.send(200, "text/html", html);
 }
 
-void handlePumpOn()   { zone1Active = true;  applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
-void handlePumpOff()  { zone1Active = false; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
-void handleValveOn()  { zone2Active = true;  applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
-void handleValveOff() { zone2Active = false; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handlePumpOn()   { irrigationActive = true;  applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handlePumpOff()  { irrigationActive = false; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handleValveOn()  { irrigationActive = true;  applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handleValveOff() { irrigationActive = false; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
 
 void setup() {
   pinMode(PUMP_PIN,  OUTPUT);

@@ -334,6 +334,16 @@
     <div class="section-eyebrow">Live zones</div>
     <div class="zones" id="zoneContainer"></div>
 
+    <div class="zone-card" style="margin-bottom:22px;">
+      <div class="zone-top"><div class="zone-title display">Shared Watering</div></div>
+      <div class="zone-schedule">One control starts or stops the shared irrigation system for both growing areas.</div>
+      <div class="zone-actions" style="margin-top:14px;">
+        <button type="button" id="waterBothButton" class="btn btn-water">Water both areas now</button>
+        <button type="button" id="stopBothButton" class="btn btn-stop" disabled>Stop watering</button>
+        <span id="sharedWateringState" class="zone-watering-state" style="display:flex;">Watering is off</span>
+      </div>
+    </div>
+
     <div class="zone-card" style="margin-bottom: 22px;">
       <div class="zone-top">
         <div class="zone-title display">Main Water Reservoir</div>
@@ -358,20 +368,20 @@
       <div style="overflow-x: auto;">
         <table class="history">
           <thead>
-            <tr><th>Zone</th><th>Frequency</th><th>Preset Time</th><th style="text-align:right">Status</th></tr>
+            <tr><th>Shared watering run</th><th>Frequency</th><th>Preset Time</th><th>Runtime</th></tr>
           </thead>
           <tbody id="scheduleTableBody">
             <tr>
-              <td><b>Zone 01 — Indoor</b></td>
+              <td><b>Daily run 1 — both areas</b></td>
               <td>Daily</td>
-              <td id="schedZone1Time">06:00 AM</td>
-              <td style="text-align:right;"><span class="mode-auto">Preset Saved</span></td>
+              <td id="schedRun1Time">06:00 AM</td>
+              <td id="schedRun1Duration">1 minute</td>
             </tr>
             <tr>
-              <td><b>Zone 02 — Outdoor</b></td>
+              <td><b>Daily run 2 — both areas</b></td>
               <td>Daily</td>
-              <td id="schedZone2Time">07:00 AM</td>
-              <td style="text-align:right;"><span class="mode-auto">Preset Saved</span></td>
+              <td id="schedRun2Time">07:00 AM</td>
+              <td id="schedRun2Duration">1 minute</td>
             </tr>
           </tbody>
         </table>
@@ -527,15 +537,20 @@
     <h3 class="display" style="margin-top:0;">Adjust Watering Schedule</h3>
     <form id="scheduleForm" style="display:flex; flex-direction:column; gap:14px;" onsubmit="saveSchedule(event)">
       <div>
-        <label style="font-size:12px; font-weight:700; color:var(--ink-muted);">Select Zone</label>
-        <select id="schedZoneSelect" style="width:100%; padding:10px; border:1px solid var(--card-border); border-radius:8px;">
-          <option value="zone1">Zone 01 — Indoor</option>
-          <option value="zone2">Zone 02 — Outdoor</option>
+        <label style="font-size:12px; font-weight:700; color:var(--ink-muted);">Select daily run</label>
+        <select id="schedSlotSelect" style="width:100%; padding:10px; border:1px solid var(--card-border); border-radius:8px;">
+          <option value="zone1">Daily run 1</option>
+          <option value="zone2">Daily run 2</option>
         </select>
       </div>
       <div>
         <label style="font-size:12px; font-weight:700; color:var(--ink-muted);">Select Time (24-Hour / Numeric)</label>
         <input type="time" id="schedInputTime" required style="width:100%; padding:10px; border:1px solid var(--card-border); border-radius:8px;">
+      </div>
+      <div>
+        <label for="schedDuration" style="font-size:12px; font-weight:700; color:var(--ink-muted);">Watering runtime (minutes; auto-stop)</label>
+        <input type="number" id="schedDuration" min="1" max="60" value="1" required style="width:100%; padding:10px; border:1px solid var(--card-border); border-radius:8px;">
+        <small style="color:var(--ink-muted);">Scheduled runs start both areas and stop automatically after this time. Set 1 minute for the first test.</small>
       </div>
       <div style="display:flex; gap:10px; margin-top:10px;">
         <button type="submit" class="btn btn-water" style="flex:1; justify-content:center;">Update Schedule</button>
@@ -570,9 +585,15 @@
     dashboardScrollArea.scrollTop += event.deltaY * unit;
   }, { passive: true });
   const zones = [
-    { id: 'zone1', name: 'Zone 01 — Indoor', schedule: '06:00 AM daily', temp: '--', humidity: '--', watering: false },
-    { id: 'zone2', name: 'Zone 02 — Outdoor', schedule: '07:00 AM daily', temp: '--', humidity: '--', watering: false }
+    { id: 'zone1', name: 'Zone 01 — Indoor', temp: '--', humidity: '--' },
+    { id: 'zone2', name: 'Zone 02 — Outdoor', temp: '--', humidity: '--' }
   ];
+  let sharedWateringActive = false;
+  let sharedWateringPending = false;
+  const wateringSchedules = {
+    zone1: { schedule_time: '06:00', duration_minutes: 1 },
+    zone2: { schedule_time: '07:00', duration_minutes: 1 }
+  };
 
   async function adminRequest(action, payload, query = {}) {
     const options = { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } };
@@ -625,10 +646,11 @@
       sessionStorage.setItem('kgg_admin_csrf', csrfToken);
       document.body.style.visibility = 'visible';
       tickClock();
-      await Promise.all([fetchWateringSchedules(), fetchLiveLowStock(), loadAdminInventory(), fetchLiveSensorData(), fetchLiveChartData(), fetchLiveWateringHistory(), fetchLiveAlerts()]);
+      await Promise.all([fetchWateringSchedules(), fetchSharedWateringState(), fetchLiveLowStock(), loadAdminInventory(), fetchLiveSensorData(), fetchLiveChartData(), fetchLiveWateringHistory(), fetchLiveAlerts()]);
       setInterval(fetchLiveSensorData, 15000);
       setInterval(fetchLiveChartData, 30000);
       setInterval(fetchLiveWateringHistory, 15000);
+      setInterval(fetchSharedWateringState, 10000);
       setInterval(fetchLiveAlerts, 30000);
       setInterval(tickClock, 1000);
     } catch (error) {
@@ -643,9 +665,15 @@
     data.forEach(item => {
       const index = item.zone_id === 'zone1' ? 0 : item.zone_id === 'zone2' ? 1 : -1;
       if (index < 0) return;
-      zones[index].schedule = formatScheduleTime(item.schedule_time) + ' daily';
-      const target = document.getElementById(index === 0 ? 'schedZone1Time' : 'schedZone2Time');
-      if (target) target.textContent = formatScheduleTime(item.schedule_time);
+      wateringSchedules[item.zone_id] = {
+        schedule_time: String(item.schedule_time || '06:00').slice(0, 5),
+        duration_minutes: Number(item.duration_minutes) || 1
+      };
+      const suffix = index === 0 ? '1' : '2';
+      const timeTarget = document.getElementById('schedRun' + suffix + 'Time');
+      const durationTarget = document.getElementById('schedRun' + suffix + 'Duration');
+      if (timeTarget) timeTarget.textContent = formatScheduleTime(item.schedule_time);
+      if (durationTarget) durationTarget.textContent = wateringSchedules[item.zone_id].duration_minutes + ' minute' + (wateringSchedules[item.zone_id].duration_minutes === 1 ? '' : 's');
     });
     renderZones();
   }
@@ -926,40 +954,77 @@
     if (!zoneContainer) return;
     zoneContainer.innerHTML = zones.map(zone =>
       '<div class="zone-card"><div class="zone-top"><div class="zone-title display">' + escapeHtml(zone.name) + '</div></div>' +
-      '<div class="zone-schedule">Auto schedule: <b>' + escapeHtml(zone.schedule) + '</b></div><div class="gauges">' +
+      '<div class="gauges">' +
       '<div class="gauge-wrap">' + gaugeSVG(zone.temp, 45, Number(zone.temp) > 30 ? '#d9573f' : '#c98a2b') + '<div class="gauge-value">' + escapeHtml(zone.temp) + '<span class="unit">' + (zone.temp === '--' ? '' : '°C') + '</span></div><div class="gauge-label">Temp</div></div>' +
-      '<div class="gauge-wrap">' + gaugeSVG(zone.humidity, 100, '#7fa787') + '<div class="gauge-value">' + escapeHtml(zone.humidity) + '<span class="unit">' + (zone.humidity === '--' ? '' : '%') + '</span></div><div class="gauge-label">Humidity</div></div></div>' +
-      '<div class="zone-actions"><button type="button" class="btn btn-water" data-zone="' + zone.id + '" data-command="ON" ' + (zone.watering ? 'disabled' : '') + '>Water now</button>' +
-      '<button type="button" class="btn btn-stop" data-zone="' + zone.id + '" data-command="OFF" ' + (zone.watering ? '' : 'disabled') + '>Stop</button>' +
-      '<div class="zone-watering-state ' + (zone.watering ? 'active' : '') + '"><span class="pulse-dot"></span>Watering…</div></div></div>'
+      '<div class="gauge-wrap">' + gaugeSVG(zone.humidity, 100, '#7fa787') + '<div class="gauge-value">' + escapeHtml(zone.humidity) + '<span class="unit">' + (zone.humidity === '--' ? '' : '%') + '</span></div><div class="gauge-label">Humidity</div></div></div></div>'
     ).join('');
-    zoneContainer.querySelectorAll('button[data-zone]').forEach(button => button.addEventListener('click', async () => {
-      const zoneId = button.dataset.zone;
-      const command = button.dataset.command;
-      const zone = zones.find(item => item.id === zoneId);
-      if (!zone || !['zone1', 'zone2'].includes(zoneId) || !['ON', 'OFF'].includes(command)) return;
-      const oldState = zone.watering;
-      zone.watering = command === 'ON';
-      renderZones();
-      try {
-        await adminRequest('watering', { zone_id: zoneId, command });
-        fetchLiveWateringHistory();
-      } catch (error) { zone.watering = oldState; renderZones(); window.alert(error.message || 'Watering command failed.'); }
-    }));
   }
 
-  function openScheduleModal() { document.getElementById('scheduleModal').style.display = 'flex'; }
+  function updateSharedWateringControls() {
+    const start = document.getElementById('waterBothButton');
+    const stop = document.getElementById('stopBothButton');
+    const state = document.getElementById('sharedWateringState');
+    if (start) start.disabled = sharedWateringPending || sharedWateringActive;
+    if (stop) stop.disabled = sharedWateringPending || !sharedWateringActive;
+    if (state) {
+      state.classList.toggle('active', sharedWateringActive);
+      state.innerHTML = sharedWateringActive ? '<span class="pulse-dot"></span>Watering both areas' : 'Watering is off';
+    }
+  }
+
+  async function fetchSharedWateringState() {
+    try {
+      const data = await adminRequest('watering_state') || [];
+      if (data.length) sharedWateringActive = String(data[0].command).toUpperCase() === 'ON';
+      else sharedWateringActive = false;
+      updateSharedWateringControls();
+    } catch (error) {}
+  }
+
+  async function setSharedWatering(command) {
+    if (sharedWateringPending || !['ON', 'OFF'].includes(command)) return;
+    const oldState = sharedWateringActive;
+    sharedWateringActive = command === 'ON';
+    sharedWateringPending = true;
+    updateSharedWateringControls();
+    try {
+      await adminRequest('watering', { zone_id: 'all', command });
+      fetchLiveWateringHistory();
+      await fetchSharedWateringState();
+    } catch (error) {
+      sharedWateringActive = oldState;
+      window.alert(error.message || 'Watering command failed.');
+    } finally {
+      sharedWateringPending = false;
+      updateSharedWateringControls();
+    }
+  }
+  document.getElementById('waterBothButton')?.addEventListener('click', () => setSharedWatering('ON'));
+  document.getElementById('stopBothButton')?.addEventListener('click', () => setSharedWatering('OFF'));
+
+  function fillScheduleForm() {
+    const slot = document.getElementById('schedSlotSelect').value;
+    const schedule = wateringSchedules[slot] || wateringSchedules.zone1;
+    document.getElementById('schedInputTime').value = schedule.schedule_time;
+    document.getElementById('schedDuration').value = schedule.duration_minutes;
+  }
+  function openScheduleModal() {
+    fillScheduleForm();
+    document.getElementById('scheduleModal').style.display = 'flex';
+  }
   function closeScheduleModal() { document.getElementById('scheduleModal').style.display = 'none'; }
+  document.getElementById('schedSlotSelect')?.addEventListener('change', fillScheduleForm);
   async function saveSchedule(event) {
     event.preventDefault();
-    const zoneId = document.getElementById('schedZoneSelect').value;
+    const zoneId = document.getElementById('schedSlotSelect').value;
     const time = document.getElementById('schedInputTime').value;
+    const duration = Number(document.getElementById('schedDuration').value);
     try {
-      await adminRequest('save_schedule', { zone_id: zoneId, schedule_time: time });
-      const index = zoneId === 'zone1' ? 0 : 1;
-      zones[index].schedule = formatScheduleTime(time) + ' daily';
-      document.getElementById(index === 0 ? 'schedZone1Time' : 'schedZone2Time').textContent = formatScheduleTime(time);
-      renderZones();
+      await adminRequest('save_schedule', { zone_id: zoneId, schedule_time: time, duration_minutes: duration });
+      wateringSchedules[zoneId] = { schedule_time: time, duration_minutes: duration };
+      const suffix = zoneId === 'zone1' ? '1' : '2';
+      document.getElementById('schedRun' + suffix + 'Time').textContent = formatScheduleTime(time);
+      document.getElementById('schedRun' + suffix + 'Duration').textContent = duration + ' minute' + (duration === 1 ? '' : 's');
       closeScheduleModal();
     } catch (error) { window.alert(error.message || 'Watering schedule could not be saved.'); }
   }
@@ -1025,11 +1090,24 @@
       }
       zones.forEach(zone => { zone.temp = Number(reading.temperature); zone.humidity = Number(reading.humidity); });
       renderZones();
-      const percent = Math.max(0, Math.min(100, Number(reading.water_level) || 0));
-      const okay = percent > 20;
       const bar = document.getElementById('reservoirProgressBar');
       const badge = document.getElementById('reservoirStatusBadge');
       const status = document.getElementById('reservoirTextStatus');
+      const rawLevel = reading.water_level;
+      if (rawLevel == null || rawLevel === '' || !Number.isFinite(Number(rawLevel))) {
+        if (bar && badge && status) {
+          bar.style.width = '0%';
+          bar.style.background = '#b3a292';
+          badge.textContent = 'No valid reading';
+          badge.className = 'stock-badge';
+          badge.style.background = '#f4f0ec';
+          badge.style.color = '#7a6b5d';
+          status.textContent = 'Sensor distance is outside its reliable range';
+        }
+        return;
+      }
+      const percent = Math.max(0, Math.min(100, Number(rawLevel)));
+      const okay = percent > 20;
       if (bar && badge && status) {
         bar.style.width = percent + '%';
         bar.style.background = okay ? 'var(--forest)' : 'var(--coral)';

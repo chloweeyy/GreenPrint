@@ -29,7 +29,10 @@ try {
                 $data = $pdo->query('SELECT il.created_at, p.name AS product_name, il.change_amount, il.reason FROM inventory_logs il LEFT JOIN products p ON p.id = il.product_id ORDER BY il.created_at DESC LIMIT 100')->fetchAll();
                 break;
             case 'schedules':
-                $data = $pdo->query('SELECT zone_id, schedule_time FROM watering_schedules ORDER BY zone_id')->fetchAll();
+                $data = $pdo->query("SELECT zone_id, schedule_time, duration_minutes FROM watering_schedules WHERE zone_id IN ('zone1', 'zone2') ORDER BY zone_id")->fetchAll();
+                break;
+            case 'watering_state':
+                $data = $pdo->query("SELECT command, created_at FROM device_commands WHERE zone_id = 'zone1' ORDER BY id DESC LIMIT 1")->fetchAll();
                 break;
             case 'transactions':
                 $from = trim((string) ($_GET['from'] ?? ''));
@@ -193,29 +196,30 @@ try {
         case 'save_schedule':
             $zoneId = (string) ($input['zone_id'] ?? '');
             $time = trim((string) ($input['schedule_time'] ?? ''));
-            if (!in_array($zoneId, ['zone1', 'zone2'], true) || !preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $time)) {
-                throw new InvalidArgumentException('Choose a valid watering zone and time.');
+            $duration = filter_var($input['duration_minutes'] ?? 1, FILTER_VALIDATE_INT);
+            if (!in_array($zoneId, ['zone1', 'zone2'], true) || !preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $time) || $duration === false || $duration < 1 || $duration > 60) {
+                throw new InvalidArgumentException('Choose a valid daily run, time, and duration from 1 to 60 minutes.');
             }
-            $stmt = $pdo->prepare('INSERT INTO watering_schedules (zone_id, schedule_time) VALUES (:zone_id, :schedule_time) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time');
-            $stmt->execute([':zone_id' => $zoneId, ':schedule_time' => $time]);
-            audit_admin($pdo, $currentAdmin, 'save_schedule', 'watering_schedule', $zoneId, ['time' => $time]);
+            $stmt = $pdo->prepare('INSERT INTO watering_schedules (zone_id, schedule_time, duration_minutes, enabled, updated_at) VALUES (:zone_id, :schedule_time, :duration, TRUE, NOW()) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time, duration_minutes = EXCLUDED.duration_minutes, enabled = TRUE, updated_at = NOW()');
+            $stmt->execute([':zone_id' => $zoneId, ':schedule_time' => $time, ':duration' => $duration]);
+            audit_admin($pdo, $currentAdmin, 'save_schedule', 'watering_schedule', $zoneId, ['time' => $time, 'duration_minutes' => $duration]);
             $respond(['status' => 'success']);
             break;
 
         case 'watering':
-            $zoneId = (string) ($input['zone_id'] ?? '');
+            $requestedZoneId = (string) ($input['zone_id'] ?? 'all');
             $command = strtoupper((string) ($input['command'] ?? ''));
-            $zoneNames = ['zone1' => 'Zone 01 — Indoor', 'zone2' => 'Zone 02 — Outdoor'];
-            if (!isset($zoneNames[$zoneId]) || !in_array($command, ['ON', 'OFF'], true)) {
-                throw new InvalidArgumentException('Choose a valid zone and watering command.');
+            if (!in_array($requestedZoneId, ['all', 'zone1', 'zone2'], true) || !in_array($command, ['ON', 'OFF'], true)) {
+                throw new InvalidArgumentException('Choose a valid shared watering command.');
             }
-            $zoneName = $zoneNames[$zoneId];
+            $zoneId = 'zone1';
+            $zoneName = 'Shared irrigation — both areas';
             $pdo->beginTransaction();
             $device = $pdo->prepare("INSERT INTO device_commands (zone_id, zone_name, command, status, issued_by) VALUES (:zone_id, :zone_name, :command, 'PENDING', :admin_id)");
             $device->execute([':zone_id' => $zoneId, ':zone_name' => $zoneName, ':command' => $command, ':admin_id' => $_SESSION['admin_id']]);
             $log = $pdo->prepare('INSERT INTO watering_logs (zone_id, zone_name, status, admin_user_id) VALUES (:zone_id, :zone_name, :status, :admin_id)');
             $log->execute([':zone_id' => $zoneId, ':zone_name' => $zoneName, ':status' => 'MANUAL_' . $command, ':admin_id' => $_SESSION['admin_id']]);
-            audit_admin($pdo, $currentAdmin, 'watering_command', 'watering_zone', $zoneId, ['zone_name' => $zoneName, 'command' => $command]);
+            audit_admin($pdo, $currentAdmin, 'watering_command', 'watering_zone', 'all', ['zone_name' => $zoneName, 'command' => $command]);
             $pdo->commit();
             $respond(['status' => 'success']);
             break;

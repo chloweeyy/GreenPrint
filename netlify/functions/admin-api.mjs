@@ -6,6 +6,23 @@ import {
 const TABLES = ["admin_users", "products", "transactions", "inventory_logs", "watering_schedules", "system_alerts", "sensor_readings", "watering_logs", "device_commands", "admin_logs"];
 const categoryPrefix = { indoor: "IN", outdoor: "OUT", pots: "POT", pebbles: "PBL", supplies: "SUP" };
 
+async function ensureWateringSchema(client) {
+  const column = await client.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'watering_schedules' AND column_name = 'duration_minutes') AS exists");
+  if (!column.rows[0].exists) await client.query("ALTER TABLE watering_schedules ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 1");
+  const table = await client.query("SELECT to_regclass('public.watering_schedule_runs') IS NOT NULL AS exists");
+  if (!table.rows[0].exists) {
+    await client.query(`CREATE TABLE IF NOT EXISTS watering_schedule_runs (
+      schedule_slot TEXT NOT NULL CHECK (schedule_slot IN ('zone1', 'zone2')),
+      run_date DATE NOT NULL,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      stops_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'RUNNING' CHECK (status IN ('RUNNING', 'DONE', 'CANCELLED')),
+      finished_at TIMESTAMPTZ,
+      PRIMARY KEY (schedule_slot, run_date)
+    )`);
+  }
+}
+
 function validId(value) {
   const id = Number(value);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
@@ -38,7 +55,10 @@ async function readAction(client, schema, action, query = new URLSearchParams())
       result = await client.query("SELECT il.created_at, p.name AS product_name, il.change_amount, il.reason FROM inventory_logs il LEFT JOIN products p ON p.id = il.product_id ORDER BY il.created_at DESC LIMIT 100");
       break;
     case "schedules":
-      result = await client.query("SELECT zone_id, schedule_time FROM watering_schedules ORDER BY zone_id");
+      result = await client.query("SELECT zone_id, schedule_time, duration_minutes FROM watering_schedules WHERE zone_id IN ('zone1', 'zone2') ORDER BY zone_id");
+      break;
+    case "watering_state":
+      result = await client.query("SELECT command, created_at FROM device_commands WHERE zone_id = 'zone1' ORDER BY id DESC LIMIT 1");
       break;
     case "transactions": {
       // Prefer the sale's recorded date; created_at can be later for imported/backfilled transactions.
@@ -172,25 +192,43 @@ async function mutateAction(client, schema, admin, action, input) {
   }
 
   if (action === "save_schedule") {
+    await ensureWateringSchema(client);
     const zoneId = String(input.zone_id || "");
     const time = String(input.schedule_time || "").trim();
-    if (!["zone1", "zone2"].includes(zoneId) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) return json({ status: "error", message: "Choose a valid watering zone and time." }, 422);
-    await client.query("INSERT INTO watering_schedules (zone_id, schedule_time) VALUES ($1, $2) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time", [zoneId, time]);
-    await writeAudit(client, admin.admin_id, "save_schedule", { zone_id: zoneId, time });
+    const duration = Number(input.duration_minutes || 1);
+    if (!["zone1", "zone2"].includes(zoneId) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+      || !Number.isInteger(duration) || duration < 1 || duration > 60) {
+      return json({ status: "error", message: "Choose a valid daily run, time, and duration from 1 to 60 minutes." }, 422);
+    }
+    const other = await client.query("SELECT schedule_time, duration_minutes FROM watering_schedules WHERE zone_id <> $1 AND enabled IS TRUE LIMIT 1", [zoneId]);
+    if (other.rows.length) {
+      const toMinute = (value) => { const [hour, minute] = String(value).slice(0, 5).split(":").map(Number); return hour * 60 + minute; };
+      const newMinute = toMinute(time);
+      const otherMinute = toMinute(other.rows[0].schedule_time);
+      const minutesNewAfterOther = (newMinute - otherMinute + 1440) % 1440;
+      const minutesOtherAfterNew = (otherMinute - newMinute + 1440) % 1440;
+      if (minutesNewAfterOther < Number(other.rows[0].duration_minutes) + 1 || minutesOtherAfterNew < duration + 1) {
+        return json({ status: "error", message: "Separate the daily runs enough for each watering runtime to finish before the next run." }, 422);
+      }
+    }
+    await client.query("INSERT INTO watering_schedules (zone_id, schedule_time, duration_minutes, enabled, updated_at) VALUES ($1, $2, $3, TRUE, NOW()) ON CONFLICT (zone_id) DO UPDATE SET schedule_time = EXCLUDED.schedule_time, duration_minutes = EXCLUDED.duration_minutes, enabled = TRUE, updated_at = NOW()", [zoneId, time, duration]);
+    await writeAudit(client, admin.admin_id, "save_schedule", { schedule_slot: zoneId, time, duration_minutes: duration });
     return json({ status: "success" });
   }
 
   if (action === "watering") {
-    const zoneId = String(input.zone_id || "");
+    await ensureWateringSchema(client);
+    const requestedZoneId = String(input.zone_id || "all");
     const command = String(input.command || "").toUpperCase();
-    const zoneNames = { zone1: "Zone 01 — Indoor", zone2: "Zone 02 — Outdoor" };
-    if (!zoneNames[zoneId] || !["ON", "OFF"].includes(command)) return json({ status: "error", message: "Choose a valid zone and watering command." }, 422);
-    const zoneName = zoneNames[zoneId];
+    if (!["all", "zone1", "zone2"].includes(requestedZoneId) || !["ON", "OFF"].includes(command)) return json({ status: "error", message: "Choose a valid watering command." }, 422);
+    const zoneId = "zone1";
+    const zoneName = "Shared irrigation — both areas";
     await client.query("BEGIN");
     try {
+      await client.query("UPDATE watering_schedule_runs SET status = 'CANCELLED', finished_at = NOW() WHERE status = 'RUNNING'");
       await client.query("INSERT INTO device_commands (zone_id, zone_name, command, status, issued_by) VALUES ($1, $2, $3, 'PENDING', $4)", [zoneId, zoneName, command, admin.admin_id]);
       await client.query("INSERT INTO watering_logs (zone_id, zone_name, status, admin_user_id) VALUES ($1, $2, $3, $4)", [zoneId, zoneName, `MANUAL_${command}`, admin.admin_id]);
-      await writeAudit(client, admin.admin_id, "watering_command", { zone_id: zoneId, zone_name: zoneName, command });
+      await writeAudit(client, admin.admin_id, "watering_command", { zone_id: "all", zone_name: zoneName, command });
       await client.query("COMMIT");
       return json({ status: "success" });
     } catch (error) { await client.query("ROLLBACK"); throw error; }
@@ -215,6 +253,10 @@ export default async function adminApi(request) {
     const url = new URL(request.url);
     const action = url.searchParams.get("action") || "";
     if (request.method === "GET") {
+      if (action === "schedules") {
+        stage = "prepare watering scheduler";
+        await ensureWateringSchema(client);
+      }
       stage = `load ${action}`;
       const schema = await getSchema(client, TABLES);
       const result = await readAction(client, schema, action, url.searchParams);
