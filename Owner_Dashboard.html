@@ -1052,6 +1052,8 @@
           feedback.textContent = 'Schedule saved. Watering both areas has started and will stop automatically after ' + (durationSeconds === 30 ? '30 seconds.' : '1 minute.');
         } else if (result.already_watering) {
           feedback.textContent = 'Schedule saved. Shared watering was already on, so the system did not send a second start command.';
+        } else if (result.already_ran_today) {
+          feedback.textContent = 'Schedule saved. Today’s watering run was already recorded, so the new schedule will run tomorrow.';
         } else {
           feedback.textContent = 'Schedule saved. It will run daily at ' + formatScheduleTime(time) + ' for ' + (durationSeconds === 30 ? '30 seconds.' : '1 minute.');
         }

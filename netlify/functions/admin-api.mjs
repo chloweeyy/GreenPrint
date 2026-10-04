@@ -214,6 +214,7 @@ async function mutateAction(client, schema, admin, action, input) {
       // the scheduler's daily run lock, so the minute job cannot double-start.
       let startedNow = false;
       let alreadyWatering = false;
+      let alreadyRanToday = false;
       const now = new Date();
       const runDate = dueScheduleDate(time, now, configuredTimeZone());
       if (runDate) {
@@ -221,37 +222,46 @@ async function mutateAction(client, schema, admin, action, input) {
           "SELECT 1 FROM watering_schedule_runs WHERE schedule_slot = 'zone1' AND status = 'RUNNING' AND stops_at > $1::timestamptz LIMIT 1",
           [now.toISOString()]
         );
-        if (!active.rows.length) {
+        if (active.rows.length) {
+          alreadyWatering = true;
+        } else {
           const current = await client.query(
             "SELECT command, auto_stop_seconds FROM device_commands WHERE zone_id = 'zone1' ORDER BY id DESC LIMIT 1"
           );
           alreadyWatering = String(current.rows[0]?.command || "").toUpperCase() === "ON"
             && current.rows[0]?.auto_stop_seconds == null;
           if (!alreadyWatering) {
-            const run = await client.query(
-              `INSERT INTO watering_schedule_runs (schedule_slot, run_date, started_at, stops_at, status)
-               VALUES ('zone1', $1::date, $2::timestamptz, $2::timestamptz + ($3::integer * INTERVAL '1 second'), 'RUNNING')
-               ON CONFLICT (schedule_slot, run_date) DO NOTHING
-               RETURNING schedule_slot`,
-              [runDate, now.toISOString(), durationSeconds]
+            const previousRun = await client.query(
+              "SELECT 1 FROM watering_schedule_runs WHERE schedule_slot = 'zone1' AND run_date = $1::date LIMIT 1",
+              [runDate]
             );
-            if (run.rows.length) {
-              await client.query(
-                "INSERT INTO device_commands (zone_id, zone_name, command, status, auto_stop_seconds) VALUES ('zone1', 'Shared irrigation — both areas', 'ON', 'PENDING', $1)",
-                [durationSeconds]
+            alreadyRanToday = previousRun.rows.length > 0;
+            if (!alreadyRanToday) {
+              const run = await client.query(
+                `INSERT INTO watering_schedule_runs (schedule_slot, run_date, started_at, stops_at, status)
+                 VALUES ('zone1', $1::date, $2::timestamptz, $2::timestamptz + ($3::integer * INTERVAL '1 second'), 'RUNNING')
+                 ON CONFLICT (schedule_slot, run_date) DO NOTHING
+                 RETURNING schedule_slot`,
+                [runDate, now.toISOString(), durationSeconds]
               );
-              await client.query(
-                "INSERT INTO watering_logs (zone_id, zone_name, status) VALUES ('zone1', 'Shared daily watering — both areas', 'AUTO_ON')"
-              );
-              startedNow = true;
+              if (run.rows.length) {
+                await client.query(
+                  "INSERT INTO device_commands (zone_id, zone_name, command, status, auto_stop_seconds) VALUES ('zone1', 'Shared irrigation — both areas', 'ON', 'PENDING', $1)",
+                  [durationSeconds]
+                );
+                await client.query(
+                  "INSERT INTO watering_logs (zone_id, zone_name, status) VALUES ('zone1', 'Shared daily watering — both areas', 'AUTO_ON')"
+                );
+                startedNow = true;
+              }
             }
           }
         }
       }
 
-      await writeAudit(client, admin.admin_id, "save_schedule", { schedule_slot: "shared", time, duration_seconds: durationSeconds, started_now: startedNow });
+      await writeAudit(client, admin.admin_id, "save_schedule", { schedule_slot: "shared", time, duration_seconds: durationSeconds, started_now: startedNow, already_ran_today: alreadyRanToday });
       await client.query("COMMIT");
-      return json({ status: "success", started_now: startedNow, already_watering: alreadyWatering });
+      return json({ status: "success", started_now: startedNow, already_watering: alreadyWatering, already_ran_today: alreadyRanToday });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       throw error;
