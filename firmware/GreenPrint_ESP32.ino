@@ -1,0 +1,241 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <WebServer.h>
+#include <DHT.h>
+#include <math.h>
+
+#include "secrets.h"
+
+const char* networks[][2] = {
+  { GP_WIFI_1_SSID, GP_WIFI_1_PASSWORD },
+  { GP_WIFI_2_SSID, GP_WIFI_2_PASSWORD },
+  { GP_WIFI_3_SSID, GP_WIFI_3_PASSWORD },
+  { GP_WIFI_4_SSID, GP_WIFI_4_PASSWORD }
+};
+const int NETWORK_COUNT = sizeof(networks) / sizeof(networks[0]);
+
+const char* SUPABASE_HOST = GP_SUPABASE_HOST;
+const char* SUPABASE_KEY = GP_SUPABASE_KEY;
+
+#define PUMP_PIN     32
+#define VALVE_PIN    33
+#define DHT_PIN      22
+#define DHT_TYPE     DHT22
+#define SONAR_TRIG   13
+#define SONAR_ECHO   27
+#define RELAY_ON     HIGH
+#define RELAY_OFF    LOW
+// Calibrate these distances from the sensor face to the water surface.
+// Replace 30 cm (empty) and 5 cm (full) with measurements from your tank.
+const float TANK_EMPTY_DISTANCE_CM = 30.0;
+const float TANK_FULL_DISTANCE_CM = 5.0;
+
+DHT dht(DHT_PIN, DHT_TYPE);
+WebServer server(80);
+
+float temperature  = 0;
+float humidity     = 0;
+int   waterLevel   = 0;
+bool  pumpOn       = false;
+bool  valveOn      = false;
+bool  zone1Active  = false;
+bool  zone2Active  = false;
+String lastCommand  = "";
+String lastCommand2 = "";
+
+unsigned long lastPush = 0;
+unsigned long lastPoll = 0;
+
+const unsigned long PUSH_INTERVAL = 120000;
+const unsigned long POLL_INTERVAL = 3000;
+
+void connectWiFi() {
+  Serial.println("Scanning networks...");
+  int found = WiFi.scanNetworks();
+  for (int i = 0; i < found; i++) {
+    for (int j = 0; j < NETWORK_COUNT; j++) {
+      if (WiFi.SSID(i) == networks[j][0]) {
+        Serial.print("Connecting to: ");
+        Serial.println(networks[j][0]);
+        WiFi.begin(networks[j][0], networks[j][1]);
+        int tries = 0;
+        while (WiFi.status() != WL_CONNECTED && tries < 20) {
+          delay(500); Serial.print("."); tries++;
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+          Serial.println("\nWiFi connected!");
+          Serial.print("IP: ");
+          Serial.println(WiFi.localIP());
+          return;
+        }
+      }
+    }
+  }
+  Serial.println("No known network. Retrying in 10s...");
+  delay(10000);
+  connectWiFi();
+}
+
+float readSonar() {
+  digitalWrite(SONAR_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(SONAR_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(SONAR_TRIG, LOW);
+  long duration = pulseIn(SONAR_ECHO, HIGH, 30000);
+  if (duration == 0) { Serial.println("Sonar timeout"); return -1; }
+  return duration * 0.034 / 2.0;
+}
+
+void readSensors() {
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+  if (!isnan(t)) temperature = t;
+  if (!isnan(h)) humidity    = h;
+  float dist = readSonar();
+  if (dist > 0 && TANK_EMPTY_DISTANCE_CM > TANK_FULL_DISTANCE_CM) {
+    // A smaller sensor-to-water distance means a fuller tank.
+    float percent = 100.0f * (TANK_EMPTY_DISTANCE_CM - dist)
+                    / (TANK_EMPTY_DISTANCE_CM - TANK_FULL_DISTANCE_CM);
+    waterLevel = (int)roundf(constrain(percent, 0.0f, 100.0f));
+  }
+  Serial.printf("Temp: %.1f | Humidity: %.0f | Water: %d%% (%.1fcm)\n",
+    temperature, humidity, waterLevel, dist);
+}
+
+void pushToSupabase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  WiFiClientSecure* client = new WiFiClientSecure;
+  client->setInsecure();
+  HTTPClient http;
+  String url = "https://";
+  url += SUPABASE_HOST;
+  url += "/rest/v1/sensor_readings";
+  http.begin(*client, url);
+  http.addHeader("Content-Type",  "application/json");
+  http.addHeader("apikey",        SUPABASE_KEY);
+  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+  http.addHeader("Prefer",        "return=minimal");
+  String body = "{";
+  body += "\"temperature\":" + String(temperature, 1) + ",";
+  body += "\"humidity\":"    + String(humidity, 0)    + ",";
+  body += "\"water_level\":" + String(waterLevel);
+  body += "}";
+  int code = http.POST(body);
+  Serial.print("Supabase push: HTTP ");
+  Serial.println(code);
+  http.end();
+  delete client;
+}
+
+void applyWateringOutputs() {
+  // Both logical zones currently share one pump and one valve.
+  bool anyZoneActive = zone1Active || zone2Active;
+  pumpOn = anyZoneActive;
+  valveOn = anyZoneActive;
+  digitalWrite(PUMP_PIN, pumpOn ? RELAY_ON : RELAY_OFF);
+  digitalWrite(VALVE_PIN, valveOn ? RELAY_ON : RELAY_OFF);
+}
+
+void applyZoneCommand(const String& payload, String& lastPayload, bool& zoneActive, const char* label) {
+  if (payload == lastPayload) return;
+  lastPayload = payload;
+  if (payload.indexOf("\"ON\"") >= 0) {
+    zoneActive = true;
+  } else if (payload.indexOf("\"OFF\"") >= 0) {
+    zoneActive = false;
+  } else {
+    return;
+  }
+  applyWateringOutputs();
+  Serial.printf("%s %s | Pump %s | Valve %s\n", label,
+    zoneActive ? "ON" : "OFF", pumpOn ? "ON" : "OFF", valveOn ? "ON" : "OFF");
+}
+
+void pollZone(const char* zoneId, String& lastPayload, bool& zoneActive, const char* label) {
+  WiFiClientSecure* client = new WiFiClientSecure;
+  client->setInsecure();
+  HTTPClient http;
+  String url = "https://";
+  url += SUPABASE_HOST;
+  url += "/rest/v1/device_commands?zone_id=eq.";
+  url += zoneId;
+  url += "&order=id.desc&limit=1&select=command,id";
+  http.begin(*client, url);
+  http.addHeader("apikey", SUPABASE_KEY);
+  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+  int code = http.GET();
+  if (code == 200) {
+    String payload = http.getString();
+    Serial.printf("%s Command: %s\n", label, payload.c_str());
+    applyZoneCommand(payload, lastPayload, zoneActive, label);
+  } else {
+    Serial.printf("%s command poll failed: HTTP %d\n", label, code);
+  }
+  http.end();
+  delete client;
+}
+
+void pollCommand() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  pollZone("zone1", lastCommand, zone1Active, "Zone 1");
+  pollZone("zone2", lastCommand2, zone2Active, "Zone 2");
+}
+
+void handleRoot() {
+  String html = "<!DOCTYPE html><html><head>";
+  html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+  html += "<title>GreenPrint Local</title>";
+  html += "<style>body{font-family:sans-serif;max-width:400px;margin:40px auto;padding:0 20px;}";
+  html += "h2{color:#10281a;}.card{background:#f3f6f0;border-radius:12px;padding:20px;margin:16px 0;}";
+  html += ".btn{display:block;width:100%;padding:14px;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;margin:8px 0;}";
+  html += ".btn-on{background:#10281a;color:#fff;}.btn-off{background:#fff;border:1px solid #ccc;color:#d9573f;}</style></head><body>";
+  html += "<h2>GreenPrint Local</h2>";
+  html += "<div class='card'><b>Temperature:</b> " + String(temperature, 1) + " C<br>";
+  html += "<b>Humidity:</b> " + String(humidity, 0) + " %<br>";
+  html += "<b>Water level:</b> " + String(waterLevel) + " %</div>";
+  html += "<div class='card'><b>Pump:</b> " + String(pumpOn ? "ON" : "OFF") + "<br>";
+  html += "<a href='/pump/on'><button class='btn btn-on'>Water Now (Pump)</button></a>";
+  html += "<a href='/pump/off'><button class='btn btn-off'>Stop Pump</button></a></div>";
+  html += "<div class='card'><b>Valve:</b> " + String(valveOn ? "ON" : "OFF") + "<br>";
+  html += "<a href='/valve/on'><button class='btn btn-on'>Open Valve</button></a>";
+  html += "<a href='/valve/off'><button class='btn btn-off'>Close Valve</button></a></div>";
+  html += "</body></html>";
+  server.send(200, "text/html", html);
+}
+
+void handlePumpOn()   { zone1Active = true;  applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handlePumpOff()  { zone1Active = false; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handleValveOn()  { zone2Active = true;  applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+void handleValveOff() { zone2Active = false; applyWateringOutputs(); server.sendHeader("Location", "/"); server.send(303); }
+
+void setup() {
+  pinMode(PUMP_PIN,  OUTPUT);
+  pinMode(VALVE_PIN, OUTPUT);
+  digitalWrite(PUMP_PIN,  RELAY_OFF);
+  digitalWrite(VALVE_PIN, RELAY_OFF);
+  delay(1000);
+  Serial.begin(115200);
+  Serial.println("\nGreenPrint ESP32 — Booting...");
+  dht.begin();
+  pinMode(SONAR_TRIG, OUTPUT);
+  pinMode(SONAR_ECHO, INPUT);
+  connectWiFi();
+  server.on("/",          handleRoot);
+  server.on("/pump/on",   handlePumpOn);
+  server.on("/pump/off",  handlePumpOff);
+  server.on("/valve/on",  handleValveOn);
+  server.on("/valve/off", handleValveOff);
+  server.begin();
+  Serial.println("Local dashboard ready.");
+  readSensors();
+  pushToSupabase();
+}
+
+void loop() {
+  server.handleClient();
+  unsigned long now = millis();
+  if (now - lastPush >= PUSH_INTERVAL) { readSensors(); pushToSupabase(); lastPush = now; }
+  if (now - lastPoll >= POLL_INTERVAL) { pollCommand(); lastPoll = now; }
+}
