@@ -22,21 +22,16 @@ const char* SUPABASE_KEY = GP_SUPABASE_KEY;
 #define VALVE_PIN    33
 #define DHT_PIN      22
 #define DHT_TYPE     DHT22
-#define SONAR_TRIG   13
-#define SONAR_ECHO   12
+#define SONAR_RX     16
+#define SONAR_TX     17
 #define RELAY_ON     HIGH
 #define RELAY_OFF    LOW
-// GPIO12 matches the documented wiring and is an ESP32 boot-strapping pin.
-// Keep the AJ-SR04M ECHO line low during reset and use a divider/level shifter
-// so the ESP32 input never exceeds 3.3 V (for example, 10k from ECHO to GPIO12
-// and 20k from GPIO12 to GND when the sensor's ECHO high level is 5 V).
-// AJ-SR04M readings inside its 20 cm blind zone are unreliable. Keep a small
-// margin and mount the probe at least 5 cm above the tank rim. For the 39 cm
-// tank with a maximum water depth of about half its height, these are initial
-// sensor-face-to-water distances: empty at tank bottom = 44 cm; full = 24.5 cm.
-// Re-measure both endpoints from the probe face after mounting and adjust them.
+// The supplied sketch uses the AJ-SR04M UART output mode on Serial2:
+// sensor TX -> ESP32 RX (GPIO16), sensor RX -> ESP32 TX (GPIO17).
+// Confirm the sensor is configured for UART output mode. If its TX signal is
+// 5 V, level-shift it before connecting to the ESP32 RX pin.
 const float SONAR_MIN_VALID_DISTANCE_CM = 22.0;
-const float TANK_EMPTY_DISTANCE_CM = 44.0;
+const float TANK_EMPTY_DISTANCE_CM = 39.0;
 const float TANK_FULL_DISTANCE_CM = 24.5;
 const int SONAR_SAMPLE_COUNT = 5;
 const int SONAR_MIN_VALID_SAMPLES = 3;
@@ -88,20 +83,46 @@ void connectWiFi() {
   connectWiFi();
 }
 
-float readSonar() {
-  digitalWrite(SONAR_TRIG, LOW);
-  delayMicroseconds(2);
-  digitalWrite(SONAR_TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(SONAR_TRIG, LOW);
-  long duration = pulseIn(SONAR_ECHO, HIGH, 30000);
-  if (duration == 0) { Serial.println("Sonar timeout"); return -1; }
-  float distance = duration * 0.034 / 2.0;
-  if (distance < SONAR_MIN_VALID_DISTANCE_CM) {
-    Serial.printf("Sonar below reliable range: %.1f cm\n", distance);
-    return -1;
+bool readSonarByte(uint8_t& value, unsigned long deadline) {
+  while (Serial2.available() == 0) {
+    if ((int32_t)(millis() - deadline) >= 0) return false;
+    delay(1);
   }
-  return distance;
+  value = (uint8_t)Serial2.read();
+  return true;
+}
+
+float readSonar() {
+  // UART frame: 0xFF, distance high byte, distance low byte, checksum.
+  // Search for the header instead of flushing the UART buffer; automatic
+  // sensor frames may already be waiting when this function is called.
+  const unsigned long deadline = millis() + 250UL;
+  while ((int32_t)(millis() - deadline) < 0) {
+    if (Serial2.available() == 0) {
+      delay(1);
+      continue;
+    }
+    if ((uint8_t)Serial2.read() != 0xFF) continue;
+
+    uint8_t highByte, lowByte, checksumByte;
+    if (!readSonarByte(highByte, deadline) ||
+        !readSonarByte(lowByte, deadline) ||
+        !readSonarByte(checksumByte, deadline)) {
+      break;
+    }
+    const uint8_t expectedChecksum = (uint8_t)(0xFF + highByte + lowByte);
+    if (expectedChecksum != checksumByte) continue;
+
+    const uint16_t distanceMm = ((uint16_t)highByte << 8) | lowByte;
+    const float distanceCm = distanceMm / 10.0f;
+    if (distanceCm < SONAR_MIN_VALID_DISTANCE_CM) {
+      Serial.printf("Sonar below reliable range: %.1f cm\n", distanceCm);
+      return -1;
+    }
+    return distanceCm;
+  }
+  Serial.println("Sonar UART timeout or invalid frame");
+  return -1;
 }
 
 float readStableSonar() {
@@ -283,8 +304,8 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\nGreenPrint ESP32 — Booting...");
   dht.begin();
-  pinMode(SONAR_TRIG, OUTPUT);
-  pinMode(SONAR_ECHO, INPUT);
+  Serial2.begin(9600, SERIAL_8N1, SONAR_RX, SONAR_TX);
+  Serial.println("AJ-SR04M UART initialized on RX16/TX17.");
   connectWiFi();
   server.on("/",          handleRoot);
   server.on("/pump/on",   handlePumpOn);
