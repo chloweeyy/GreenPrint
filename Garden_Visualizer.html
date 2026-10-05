@@ -40,6 +40,18 @@
   .template-card:hover { border-color: var(--secondary); transform: translateY(-2px); }
   .template-card.active { border-color: var(--secondary); outline: 2px solid var(--secondary); outline-offset: 2px; }
   .template-label { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: white; font-size: 11px; text-align: center; padding: 4px; font-weight: bold; }
+  .scene-picker { flex:none; margin-bottom:8px; }
+  .scene-picker-summary { display:flex; align-items:center; gap:10px; min-height:44px; padding:7px 12px; border:1px solid rgba(14,108,74,.18); border-radius:14px; background:#f6faf6; color:#173d2a; cursor:pointer; list-style:none; touch-action:manipulation; user-select:none; }
+  .scene-picker-summary:focus-visible { outline:3px solid #8ac9a2; outline-offset:2px; }
+  .scene-picker-summary::-webkit-details-marker { display:none; }
+  .scene-picker-summary .scene-picker-icon { display:grid; width:28px; height:28px; flex:none; place-items:center; border-radius:9px; background:#dff2e6; color:#0e6c4a; }
+  .scene-picker-summary .scene-picker-copy { display:flex; min-width:0; flex:1; flex-direction:column; align-items:flex-start; line-height:1.2; }
+  .scene-picker-summary .scene-picker-title { font:700 12px Inter,Arial,sans-serif; }
+  .scene-picker-summary .scene-picker-caption { margin-top:2px; color:#68776d; font:500 10px Inter,Arial,sans-serif; }
+  .scene-picker-chevron { flex:none; transition:transform .18s ease; }
+  .scene-picker[open] .scene-picker-chevron { transform:rotate(180deg); }
+  .scene-picker .template-strip { display:none; margin-top:7px; padding:9px; border:1px solid rgba(20,70,45,.13); border-radius:16px; background:#fbfdfb; }
+  .scene-picker[open] .template-strip { display:flex; }
 
   /* 3D Canvas Item Layering & Dynamic Shadows */
   .canvas-item {
@@ -53,13 +65,17 @@
   .canvas-item:active { cursor: grabbing; transform: scale(1.05); z-index: 999 !important; }
   .canvas-item img { pointer-events: none; height: auto; }
   #inventoryList { touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-  .plan-control-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:42px; flex:none; }
-  #visualizerInstructions { display:flex; align-items:center; gap:8px; flex:1 1 auto; min-width:0; min-height:38px; margin:0 0 6px; padding:6px 10px; border:1px solid rgba(14,108,74,.15); border-radius:12px; background:#f2f7f1; color:#395446; font:500 11px/1.35 Inter,Arial,sans-serif; }
-  .plan-help-label { flex:none; color:#012d1d; font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
-  #planHint { min-width:0; }
-  #planToolbarHost { display:flex; flex:none; justify-content:flex-end; margin-bottom:6px; }
+  .plan-section-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:7px; }
+  .plan-section-actions { display:flex; align-items:center; gap:6px; flex:none; }
+  #openVisualizerGuide { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:36px; padding:6px 10px; border:1px solid rgba(14,108,74,.16); border-radius:999px; background:#f2f7f1; color:#17442f; font:700 11px Inter,Arial,sans-serif; white-space:nowrap; touch-action:manipulation; }
+  .plan-control-row { display:flex; align-items:center; justify-content:flex-end; gap:10px; min-height:42px; flex:none; margin-bottom:7px; }
+  #planHint { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+  #planToolbarHost { display:flex; flex:1 1 auto; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
+  #aiDecorateBtn { flex:none; min-height:38px; padding:7px 14px; border-radius:999px; font-size:11px; white-space:nowrap; touch-action:manipulation; }
   #planLayerHost { width:100%; flex:none; margin-bottom:6px; }
   #planScaleHost { display:flex; justify-content:center; align-items:center; flex:none; min-height:20px; }
+  .plan-toolbar[hidden], .plan-scale[hidden], #planScaleHost[hidden], #planLayerHost[hidden] { display:none!important; }
+  #aiSuggestion { flex:none; }
 
   /* Pot Layer: Heavy floor shadow */
   .type-pots img { filter: drop-shadow(0px 25px 15px rgba(0,0,0,0.6)); }
@@ -110,34 +126,38 @@
     #canvasArea { height: clamp(320px, 58vh, 460px) !important; min-height: 320px !important; flex: none !important; }
     #right-panel { width: 100% !important; height: min(60vh, 560px) !important; min-height: 390px; flex: none !important; margin-bottom: 18px !important; }
     .template-card { min-width: 100px; height: 70px; }
-    .plan-control-row { align-items:stretch; flex-wrap:wrap; gap:6px; }
-    #visualizerInstructions { flex:1 1 100%; margin:0; font-size:11px; }
-    #planToolbarHost { flex:1 1 100%; justify-content:center; margin:0; }
+    .plan-section-heading { align-items:flex-start; }
+    .plan-section-actions { gap:4px; }
+    #openVisualizerGuide { min-height:40px; }
+    .plan-control-row { align-items:center; flex-wrap:wrap; gap:6px; }
+    #planToolbarHost { flex:1 1 100%; justify-content:space-between; flex-wrap:wrap; margin:0; }
     #planLayerHost { margin-bottom:6px; }
     #planScaleHost { min-height:22px; }
   }
-  /* Samsung Galaxy Tab landscape layout: larger template choices, usable plan space, independent inventory scrolling. */
+  /* Landscape tablet kiosk: compact scene picker, large plan canvas, independent inventory scrolling. */
   @media (min-width: 701px) and (orientation: landscape) {
     html, body { width:100%; height:100dvh!important; min-height:0!important; overflow:hidden!important; }
     body { height:100dvh!important; min-height:0!important; overflow:hidden!important; }
-    header { height:58px!important; min-height:58px; flex:none!important; padding:5px 14px!important; }
+    header { height:56px!important; min-height:56px!important; flex:none!important; padding:4px 14px!important; }
     header .brand > div:first-child { width:74px!important; }
-    main { width:100%!important; max-width:1600px!important; height:calc(100dvh - 58px)!important; max-height:calc(100dvh - 58px)!important; min-height:0!important; flex:1 1 auto!important; padding:8px!important; gap:10px!important; overflow:hidden!important; }
+    main { width:100%!important; max-width:1800px!important; height:calc(100dvh - 56px)!important; max-height:calc(100dvh - 56px)!important; min-height:0!important; flex:1 1 auto!important; padding:7px!important; gap:10px!important; overflow:hidden!important; }
     #left-panel { min-width:0!important; min-height:0!important; height:100%!important; padding:10px!important; border-radius:20px!important; }
     #left-panel > .mb-3 { margin-bottom:5px!important; }
-    .template-strip { min-width:0; gap:8px!important; padding:4px 3px 7px!important; scrollbar-width:thin; touch-action:pan-x; }
-    .template-card { flex:0 0 clamp(104px,10vw,136px)!important; min-width:clamp(104px,10vw,136px)!important; height:78px!important; border-radius:11px!important; }
+    .scene-picker { margin-bottom:5px!important; }
+    .scene-picker-summary { min-height:40px; padding:5px 10px; }
+    .scene-picker .template-strip { min-width:0; gap:8px!important; padding:8px!important; scrollbar-width:thin; touch-action:pan-x; }
+    .template-card { flex:0 0 clamp(104px,10vw,136px)!important; min-width:clamp(104px,10vw,136px)!important; height:72px!important; border-radius:11px!important; }
     .template-label { font-size:11px!important; padding:5px 3px!important; }
-    .plan-control-row { gap:8px!important; min-height:42px; }
-    #visualizerInstructions { flex:1 1 auto!important; margin:0 0 6px!important; padding:6px 9px!important; font-size:10px!important; line-height:1.35!important; }
-    #planToolbarHost { margin:0 0 6px!important; }
+    .plan-section-heading { margin-bottom:5px!important; }
+    #openVisualizerGuide { min-height:36px; padding:5px 10px; }
+    .plan-control-row { gap:8px!important; min-height:40px; margin-bottom:5px!important; }
+    #planToolbarHost { margin:0!important; }
+    #aiDecorateBtn { min-height:36px!important; padding:6px 12px!important; font-size:11px!important; }
     #planLayerHost { margin-bottom:6px!important; }
     #canvasArea { flex:1 1 0%!important; width:100%!important; height:auto!important; min-height:150px!important; max-height:none!important; touch-action:none; border-radius:16px!important; }
     #planScaleHost { min-height:19px!important; }
-    #left-panel > .mt-4 { flex:none!important; margin-top:7px!important; }
-    #aiDecorateBtn { min-height:40px!important; padding:7px 18px!important; font-size:12px!important; }
     #aiSuggestion { max-height:56px; overflow:auto; margin-top:5px!important; padding:6px 10px!important; }
-    #right-panel { width:clamp(250px,28vw,340px)!important; min-width:245px!important; min-height:0!important; height:100%!important; flex:0 0 clamp(250px,28vw,340px)!important; gap:8px!important; }
+    #right-panel { width:clamp(240px,25vw,320px)!important; min-width:240px!important; min-height:0!important; height:100%!important; flex:0 0 clamp(240px,25vw,320px)!important; gap:8px!important; }
     #right-panel > div { min-height:0!important; padding:12px!important; border-radius:20px!important; }
     #right-panel h3 { font-size:16px!important; }
     #right-panel p { margin-bottom:7px!important; line-height:1.35!important; }
@@ -151,22 +171,23 @@
   /* Give landscape tablets a little more breathing room and prevent the
      empty-canvas instructions from fighting the view controls. */
   @media (min-width: 701px) and (max-width: 1280px) and (orientation: landscape) {
-    header { height:62px!important; min-height:62px!important; padding:5px 14px!important; }
+    header { height:56px!important; min-height:56px!important; padding:4px 14px!important; }
     header h1 { font-size:19px!important; }
     main { gap:12px!important; padding:10px!important; }
-    #left-panel { padding:12px!important; }
-    #right-panel { width:clamp(250px,29vw,330px)!important; min-width:250px!important; flex:0 0 clamp(250px,29vw,330px)!important; }
-    #canvasArea { min-height:170px!important; }
+    #left-panel { padding:10px!important; }
+    #right-panel { width:clamp(240px,25vw,300px)!important; min-width:240px!important; flex:0 0 clamp(240px,25vw,300px)!important; }
+    #canvasArea { min-height:220px!important; }
     #canvasPlaceholder { max-width:min(360px,86%)!important; padding:clamp(12px,2vw,22px)!important; }
     #canvasPlaceholder > span { font-size:38px!important; }
     #canvasPlaceholder h3 { font-size:18px!important; }
     #canvasPlaceholder p { font-size:12px!important; line-height:1.45!important; }
   }
   @media (min-width: 701px) and (max-height: 760px) and (orientation: landscape) {
-    header { height:54px!important; min-height:54px!important; }
-    main { height:calc(100dvh - 54px)!important; max-height:calc(100dvh - 54px)!important; }
+    header { height:52px!important; min-height:52px!important; }
+    main { height:calc(100dvh - 52px)!important; max-height:calc(100dvh - 52px)!important; }
     .template-card { height:64px!important; }
-    #visualizerInstructions { max-height:42px; overflow:auto; }
+    .scene-picker-summary { min-height:36px; }
+    .plan-control-row { min-height:36px; }
   }
 </style>
 <link rel="stylesheet" href="kiosk-touch.css?v=20261001-tablet">
@@ -189,30 +210,42 @@
   </a>
 </header>
 
-<main class="flex-1 max-w-[1400px] w-full mx-auto p-4 md:p-6 flex gap-4 md:gap-6 overflow-hidden">
+<main class="flex-1 max-w-[1800px] w-full mx-auto p-4 md:p-6 flex gap-4 md:gap-6 overflow-hidden">
   
   <div id="left-panel" class="flex-1 bg-white border border-outline-variant/30 rounded-3xl p-4 md:p-6 shadow-sm flex flex-col relative overflow-hidden">
     
-    <div class="mb-3 shrink-0">
-      <div class="flex items-center justify-between mb-2">
-        <h3 class="font-headline-md text-primary text-sm md:text-base">1. Choose a garden plan</h3>
-        <button onclick="clearCanvas()" class="text-error text-xs font-label-bold hover:underline">Clear All</button>
+    <div class="shrink-0">
+      <div class="plan-section-heading">
+        <h3 class="font-headline-md text-primary text-sm md:text-base">Garden plan</h3>
+        <div class="plan-section-actions">
+          <button id="openVisualizerGuide" type="button" aria-haspopup="dialog" aria-controls="visualizerGuide"><span class="material-symbols-outlined text-[17px]">help</span><span>Instructions</span></button>
+          <button onclick="clearCanvas()" class="text-error text-xs font-label-bold hover:underline px-2 py-2">Clear All</button>
+        </div>
       </div>
-      <div class="template-strip flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-        
+      <details id="scenePicker" class="scene-picker">
+        <summary class="scene-picker-summary">
+          <span class="scene-picker-icon material-symbols-outlined">landscape</span>
+          <span class="scene-picker-copy"><span class="scene-picker-title" id="selectedSceneName">Choose a scene</span><span class="scene-picker-caption" id="selectedSceneCaption">Pick an indoor or outdoor template</span></span>
+          <span class="scene-picker-chevron material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <div class="template-strip flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
         <button type="button" class="template-card" data-scene="living-room" onclick="loadTemplate('living-room', this)" style="background-image:url('IMAGE/template-living-room.svg?v=20261001-clean-scenes')"><span class="template-label">Living room</span></button>
         <button type="button" class="template-card" data-scene="office" onclick="loadTemplate('office', this)" style="background-image:url('IMAGE/template-office.svg?v=20261001-clean-scenes')"><span class="template-label">Office</span></button>
         <button type="button" class="template-card" data-scene="bedroom" onclick="loadTemplate('bedroom', this)" style="background-image:url('IMAGE/template-bedroom.svg?v=20261001-clean-scenes')"><span class="template-label">Bedroom</span></button>
         <button type="button" class="template-card" data-scene="backyard" onclick="loadTemplate('backyard', this)" style="background-image:url('IMAGE/planner-backyard-empty.svg?v=20261001-clean-scenes')"><span class="template-label">Backyard</span></button>
         <button type="button" class="template-card" data-scene="garden" onclick="loadTemplate('garden', this)" style="background-image:url('IMAGE/planner-kitchen-garden-empty.svg?v=20261001-clean-scenes')"><span class="template-label">Garden</span></button>
         <button type="button" class="template-card" data-scene="resort" onclick="loadTemplate('resort', this)" style="background-image:url('IMAGE/planner-resort-empty.svg?v=20261001-clean-scenes')"><span class="template-label">Resort</span></button>
-
-      </div>
+        </div>
+      </details>
+      <div id="planHint" aria-live="polite"></div>
     </div>
 
     <div class="plan-control-row">
-      <div id="visualizerInstructions"><span class="plan-help-label">Planner tip</span><span id="planHint">Choose a scene, then tap an inventory item to place it or drag it onto the plan.</span></div>
-      <div id="planToolbarHost" aria-live="polite"></div>
+      <div id="planToolbarHost" aria-live="polite">
+        <button onclick="triggerAIDecorate()" id="aiDecorateBtn" disabled class="bg-secondary text-white font-label-bold shadow-md hover:bg-primary transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Generate a garden plan with AI">
+          <span class="material-symbols-outlined text-[18px]">auto_awesome</span> Generate Garden Plan
+        </button>
+      </div>
     </div>
     <div id="planLayerHost" hidden></div>
 
@@ -229,17 +262,12 @@
       <div id="canvasPlaceholder" class="text-center z-10 relative bg-white/80 p-6 rounded-2xl backdrop-blur-sm border border-outline-variant/20 shadow-lg max-w-sm">
         <span class="material-symbols-outlined text-5xl text-secondary mb-2">design_services</span>
         <h3 class="font-headline-md text-primary text-xl mb-1">Start a Garden Plan</h3>
-        <p class="text-on-surface-variant text-sm">Choose a real place, arrange plants and pots, and drop optional pebbles inside a pot. Switch to Angled View to see your plan in perspective.</p>
+        <p class="text-on-surface-variant text-sm">Choose a scene above to open your full-size planning space.</p>
       </div>
     </div>
     <div id="planScaleHost" aria-label="Garden plan scale" hidden></div>
     
-    <div class="mt-4 flex flex-col items-center shrink-0">
-      <button onclick="triggerAIDecorate()" id="aiDecorateBtn" disabled class="bg-secondary text-white px-8 py-3 rounded-full font-label-bold shadow-md hover:bg-primary transition-all flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-        <span class="material-symbols-outlined text-[18px]">auto_awesome</span> AI Auto-Decorate
-      </button>
-      <div id="aiSuggestion" class="mt-3 bg-primary-container text-on-primary-container px-5 py-3 rounded-2xl shadow-sm font-label-sm text-xs md:text-sm hidden w-full text-center border border-primary-fixed"></div>
-    </div>
+    <div id="aiSuggestion" class="mt-2 bg-primary-container text-on-primary-container px-5 py-3 rounded-2xl shadow-sm font-label-sm text-xs md:text-sm hidden w-full text-center border border-primary-fixed"></div>
 
   </div>
 
@@ -569,12 +597,12 @@
   document.addEventListener('DOMContentLoaded', loadInventory);
 </script>
 <div id="visualizerGuide" class="fixed inset-0 z-[120] hidden items-center justify-center bg-black/55 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="visualizerGuideTitle">
-  <div class="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
-    <div class="mb-3 flex items-center gap-3"><span class="material-symbols-outlined rounded-full bg-secondary-container p-3 text-secondary">yard</span><div><p class="text-xs font-bold uppercase tracking-widest text-secondary">Quick start</p><h2 id="visualizerGuideTitle" class="font-headline-md text-2xl text-primary">How to use the Garden Planner</h2></div></div>
-    <ol class="mb-6 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-on-surface-variant"><li>Pick a room or outdoor place template.</li><li>Drag a plant, pot, or pebbles from Live Inventory onto the plan. Tap an item in the inventory to place it at the center.</li><li>Drag a plant or pebbles directly onto a pot to combine them. Select the planter to separate, replace, or remove a layer.</li><li>Use the zoom buttons to inspect products. When zoomed in, drag empty space with a finger or mouse to pan around the whole scene. The 2D view is top-down; Angled View adds perspective.</li><li>For outdoor plans, loose pebbles can also be placed directly on the ground.</li></ol>
+  <div class="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-8">
+    <div class="mb-3 flex items-start justify-between gap-3"><div class="flex items-center gap-3"><span class="material-symbols-outlined rounded-full bg-secondary-container p-3 text-secondary">yard</span><div><p class="text-xs font-bold uppercase tracking-widest text-secondary">Quick start</p><h2 id="visualizerGuideTitle" class="font-headline-md text-2xl text-primary">How to use the Garden Planner</h2></div></div><button id="dismissVisualizerGuide" type="button" class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-surface-container text-primary" aria-label="Close instructions"><span class="material-symbols-outlined">close</span></button></div>
+    <ol class="mb-6 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-on-surface-variant"><li>Open <b>Choose a scene</b> and select a room or outdoor setting.</li><li>Drag a plant, pot, or pebbles from Live Inventory onto the plan. Tap an inventory item to place it in the center.</li><li>Drop a plant or pebbles onto a pot to combine them. Select a planter to separate, replace, or remove a layer.</li><li>Use the view and zoom controls to explore the plan. Drag empty canvas space to pan.</li><li>The 2D view is top-down; Angled View adds perspective. The scale marks represent metres.</li></ol>
     <button id="closeVisualizerGuide" type="button" class="min-h-12 w-full rounded-2xl bg-primary px-5 py-3 font-bold text-white">Start planning</button>
   </div>
 </div>
-<script src="garden_visualizer_3d.js?v=20261004-landscape-clean-v21"></script>
+<script src="garden_visualizer_3d.js?v=20261004-big-canvas-v22"></script>
 </body>
 </html>
