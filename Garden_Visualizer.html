@@ -189,6 +189,44 @@
     .scene-picker-summary { min-height:36px; }
     .plan-control-row { min-height:36px; }
   }
+  /* Expanded planner: put the scene controls in a compact top band and give
+     the rest of the available viewport to the garden canvas. */
+  html:has(body.visualizer-focus-mode), body.visualizer-focus-mode {
+    width:100%!important; height:100dvh!important; min-height:0!important; overflow:hidden!important;
+  }
+  body.visualizer-focus-mode > header { display:none!important; }
+  body.visualizer-focus-mode > main {
+    position:fixed!important; inset:0!important; z-index:110!important;
+    width:100vw!important; max-width:none!important; height:100dvh!important; max-height:none!important;
+    min-height:0!important; margin:0!important; padding:clamp(8px,1.2vw,18px)!important;
+    display:flex!important; flex-direction:row!important; gap:0!important; overflow:hidden!important;
+  }
+  body.visualizer-focus-mode #left-panel {
+    width:100%!important; max-width:none!important; height:100%!important; min-width:0!important; min-height:0!important;
+    flex:1 1 auto!important; padding:clamp(9px,1.2vw,18px)!important; border-radius:18px!important;
+  }
+  body.visualizer-focus-mode #right-panel { display:none!important; }
+  body.visualizer-focus-mode .plan-section-heading { min-height:34px; }
+  body.visualizer-focus-mode .plan-section-heading h3 { font-size:clamp(15px,1.4vw,20px)!important; }
+  body.visualizer-focus-mode .scene-picker { margin-bottom:6px!important; }
+  body.visualizer-focus-mode .scene-picker-summary { min-height:38px; }
+  body.visualizer-focus-mode .plan-control-row { min-height:40px; margin-bottom:5px!important; }
+  body.visualizer-focus-mode #planToolbarHost { margin:0!important; }
+  body.visualizer-focus-mode #canvasArea {
+    width:100%!important; height:auto!important; min-height:0!important; max-height:none!important;
+    flex:1 1 0%!important; border-radius:16px!important;
+  }
+  body.visualizer-focus-mode #planScaleHost { min-height:20px!important; }
+  body.visualizer-focus-mode #planLayerHost { max-height:18dvh; overflow:auto; }
+  body.visualizer-focus-mode #aiSuggestion { max-height:12dvh; overflow:auto; margin-top:5px!important; padding:6px 10px!important; }
+  #focusModeBtn {
+    display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:36px; padding:5px 10px;
+    border:1px solid rgba(14,108,74,.2); border-radius:999px; background:#0e6c4a; color:#fff;
+    font:700 11px Inter,Arial,sans-serif; white-space:nowrap; touch-action:manipulation;
+  }
+  #focusModeBtn:hover { background:#012d1d; }
+  #focusModeBtn:focus-visible { outline:3px solid #8ac9a2; outline-offset:2px; }
+  body.visualizer-focus-mode #focusModeBtn { background:#f2f7f1; color:#17442f; }
 </style>
 <link rel="stylesheet" href="kiosk-touch.css?v=20261001-tablet">
 </head>
@@ -219,6 +257,7 @@
         <h3 class="font-headline-md text-primary text-sm md:text-base">Garden plan</h3>
         <div class="plan-section-actions">
           <button id="openVisualizerGuide" type="button" aria-haspopup="dialog" aria-controls="visualizerGuide"><span class="material-symbols-outlined text-[17px]">help</span><span>Instructions</span></button>
+          <button id="focusModeBtn" type="button" aria-pressed="false"><span class="material-symbols-outlined text-[17px]" aria-hidden="true">fullscreen</span><span>Expand view</span></button>
           <button onclick="clearCanvas()" class="text-error text-xs font-label-bold hover:underline px-2 py-2">Clear All</button>
         </div>
       </div>
@@ -330,8 +369,12 @@
       renderInventory(PRODUCTS);
     } catch (err) {
       console.error('Could not load visualizer inventory:', err);
-      const message = 'Inventory is unavailable. Please ask staff for help.';
-      document.getElementById('inventoryList').innerHTML = '<p class="text-center text-sm text-on-surface-variant mt-10">' + escapeHtml(message) + '</p>';
+      const localHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      const hasPublicConfig = Boolean(window.GREENPRINT_CONFIG && window.GREENPRINT_CONFIG.supabaseUrl && window.GREENPRINT_CONFIG.supabaseAnonKey);
+      const message = !localHost && !hasPublicConfig
+        ? 'Inventory connection is not configured for this Netlify site.\n\nIn Netlify, open Project configuration → Environment variables. Add SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_PUBLISHABLE_KEY) with Functions access, using the browser-safe values from your existing Supabase project, then redeploy. Do not use the service-role key.'
+        : 'Inventory could not connect to Supabase. Check that the public catalog SELECT policy and grants from database.sql are applied, then reload the deployed site.';
+      document.getElementById('inventoryList').innerHTML = '<p role="alert" class="text-center text-sm leading-relaxed text-on-surface-variant mt-5 px-2 whitespace-pre-line">' + escapeHtml(message) + '</p>';
     }
   }
 
@@ -603,6 +646,41 @@
     <button id="closeVisualizerGuide" type="button" class="min-h-12 w-full rounded-2xl bg-primary px-5 py-3 font-bold text-white">Start planning</button>
   </div>
 </div>
-<script src="garden_visualizer_3d.js?v=20261004-big-canvas-v22"></script>
+<script src="garden_visualizer_3d.js?v=20261004-expanded-focus-v23"></script>
+<script>
+(() => {
+  const button = document.getElementById('focusModeBtn');
+  const picker = document.getElementById('scenePicker');
+  const guide = document.getElementById('visualizerGuide');
+  if (!button) return;
+
+  function refreshGardenCanvas() {
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  }
+
+  function setFocusMode(active) {
+    document.body.classList.toggle('visualizer-focus-mode', active);
+    button.setAttribute('aria-pressed', String(active));
+    button.setAttribute('aria-label', active ? 'Exit expanded garden view' : 'Expand garden view');
+    button.innerHTML = active
+      ? '<span class="material-symbols-outlined text-[17px]" aria-hidden="true">fullscreen_exit</span><span>Exit expanded view</span>'
+      : '<span class="material-symbols-outlined text-[17px]" aria-hidden="true">fullscreen</span><span>Expand view</span>';
+    if (active && picker) picker.open = false;
+    refreshGardenCanvas();
+  }
+
+  button.addEventListener('click', () => {
+    const entering = !document.body.classList.contains('visualizer-focus-mode');
+    setFocusMode(entering);
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !document.body.classList.contains('visualizer-focus-mode')) return;
+    if (guide && !guide.classList.contains('hidden')) return;
+    setFocusMode(false);
+    button.focus();
+  }, true);
+})();
+</script>
 </body>
 </html>
