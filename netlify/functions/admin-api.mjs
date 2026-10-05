@@ -4,7 +4,7 @@ import {
 } from "./admin-common.mjs";
 import { configuredTimeZone, dueScheduleDate } from "./watering-time.mjs";
 
-const TABLES = ["admin_users", "products", "transactions", "inventory_logs", "watering_schedules", "system_alerts", "sensor_readings", "watering_logs", "device_commands", "admin_logs"];
+const TABLES = ["admin_users", "products", "transactions", "inventory_logs", "watering_schedules", "system_alerts", "alert_settings", "sensor_readings", "watering_logs", "device_commands", "admin_logs"];
 const categoryPrefix = { indoor: "IN", outdoor: "OUT", pots: "POT", pebbles: "PBL", supplies: "SUP" };
 
 async function ensureWateringSchema(client) {
@@ -44,6 +44,38 @@ async function insertRow(client, table, values, returning = null) {
   const params = columns.map((_, index) => `$${index + 1}`).join(", ");
   const returnSql = returning ? ` RETURNING ${quoteIdentifier(returning)}` : "";
   return client.query(`INSERT INTO ${quoteIdentifier(table)} (${names}) VALUES (${params})${returnSql}`, columns.map((name) => values[name]));
+}
+
+async function synchronizeSystemAlerts(client) {
+  const settingsResult = await client.query("SELECT temperature_max, humidity_min, humidity_max, soil_moisture_min, water_level_min FROM alert_settings WHERE id IS TRUE");
+  const settings = settingsResult.rows[0] || { temperature_max: 35, humidity_min: 20, humidity_max: 85, soil_moisture_min: 30, water_level_min: 20 };
+  const latest = await client.query(`SELECT DISTINCT ON (zone_id) zone_id, temperature, humidity, soil_moisture, water_level
+    FROM sensor_readings ORDER BY zone_id, COALESCE(created_at, reading_time) DESC`);
+  const candidates = [];
+  for (const row of latest.rows) {
+    const zone = row.zone_id === "zone2" ? "Zone 02 — Outdoor" : "Zone 01 — Indoor";
+    const add = (type, message) => candidates.push({ type, prefix: `${zone}: `, message: `${zone}: ${message}` });
+    if (row.temperature != null && Number(row.temperature) > Number(settings.temperature_max)) add("TEMPERATURE", `High temperature detected: ${row.temperature}°C`);
+    if (row.humidity != null && Number(row.humidity) < Number(settings.humidity_min)) add("HUMIDITY", `Humidity is low: ${row.humidity}%`);
+    if (row.humidity != null && Number(row.humidity) > Number(settings.humidity_max)) add("HUMIDITY", `Humidity is high: ${row.humidity}%`);
+    if (row.soil_moisture != null && Number(row.soil_moisture) < Number(settings.soil_moisture_min)) add("MOISTURE", `Soil moisture is low: ${row.soil_moisture}%`);
+    if (row.water_level != null && Number(row.water_level) < Number(settings.water_level_min)) add("WATER_TANK", `The main water reservoir is low: ${row.water_level}%`);
+  }
+  const lowStock = await client.query("SELECT id, name, stock FROM products WHERE stock <= 5 AND is_active IS TRUE");
+  for (const product of lowStock.rows) candidates.push({ type: "LOW_STOCK", prefix: `Low stock: #${product.id} `, message: `Low stock: #${product.id} ${product.name} has ${product.stock} left.` });
+
+  const managed = new Set(["TEMPERATURE", "HUMIDITY", "MOISTURE", "WATER_TANK", "LOW_STOCK"]);
+  const active = await client.query("SELECT id, alert_type, message FROM system_alerts WHERE is_resolved IS FALSE");
+  for (const alert of active.rows) {
+    if (managed.has(alert.alert_type) && !candidates.some(item => item.type === alert.alert_type && alert.message.startsWith(item.prefix))) {
+      await client.query("UPDATE system_alerts SET is_resolved = TRUE, resolved_at = NOW() WHERE id = $1", [alert.id]);
+    }
+  }
+  for (const item of candidates) {
+    if (active.rows.some(alert => alert.alert_type === item.type && alert.message.startsWith(item.prefix))) continue;
+    const recent = await client.query("SELECT 1 FROM system_alerts WHERE alert_type = $1 AND message LIKE $2 AND created_at > NOW() - INTERVAL '10 minutes' LIMIT 1", [item.type, `${item.prefix}%`]);
+    if (!recent.rows.length) await client.query("INSERT INTO system_alerts (alert_type, message) VALUES ($1, $2)", [item.type, item.message]);
+  }
 }
 
 async function readAction(client, schema, action, query = new URLSearchParams()) {
@@ -99,7 +131,12 @@ async function readAction(client, schema, action, query = new URLSearchParams())
       break;
     }
     case "alerts":
+      await synchronizeSystemAlerts(client);
       result = await client.query("SELECT id, alert_type, message, created_at FROM system_alerts WHERE is_resolved IS FALSE ORDER BY created_at DESC LIMIT 100");
+      break;
+    case "alert_settings":
+      result = await client.query("SELECT temperature_max, humidity_min, humidity_max, soil_moisture_min, water_level_min FROM alert_settings WHERE id IS TRUE");
+      if (!result.rows.length) result = { rows: [{ temperature_max: 35, humidity_min: 20, humidity_max: 85, soil_moisture_min: 30, water_level_min: 20 }] };
       break;
     case "sensor_history":
     case "latest_sensor": {
@@ -120,6 +157,31 @@ async function readAction(client, schema, action, query = new URLSearchParams())
 }
 
 async function mutateAction(client, schema, admin, action, input) {
+  if (action === "save_alert_settings") {
+    const ranges = { temperature_max: [-30, 80], humidity_min: [0, 100], humidity_max: [0, 100], soil_moisture_min: [0, 100], water_level_min: [0, 100] };
+    const values = {};
+    for (const [field, [min, max]] of Object.entries(ranges)) {
+      const value = Number(input[field]);
+      if (!Number.isFinite(value) || value < min || value > max) return json({ status: "error", message: "Enter valid alert thresholds within the displayed ranges." }, 422);
+      values[field] = value;
+    }
+    if (values.humidity_min >= values.humidity_max) return json({ status: "error", message: "Minimum humidity must be lower than maximum humidity." }, 422);
+    await client.query(`INSERT INTO alert_settings (id, temperature_max, humidity_min, humidity_max, soil_moisture_min, water_level_min, updated_at)
+      VALUES (TRUE, $1, $2, $3, $4, $5, NOW()) ON CONFLICT (id) DO UPDATE SET temperature_max = EXCLUDED.temperature_max,
+      humidity_min = EXCLUDED.humidity_min, humidity_max = EXCLUDED.humidity_max, soil_moisture_min = EXCLUDED.soil_moisture_min,
+      water_level_min = EXCLUDED.water_level_min, updated_at = NOW()`, [values.temperature_max, values.humidity_min, values.humidity_max, values.soil_moisture_min, values.water_level_min]);
+    await writeAudit(client, admin.admin_id, "save_alert_settings", values);
+    return json({ status: "success" });
+  }
+
+  if (action === "resolve_alert") {
+    const id = validId(input.id);
+    if (!id) return json({ status: "error", message: "Choose a valid alert." }, 422);
+    await client.query("UPDATE system_alerts SET is_resolved = TRUE, resolved_at = NOW() WHERE id = $1 AND is_resolved IS FALSE", [id]);
+    await writeAudit(client, admin.admin_id, "resolve_alert", { alert_id: String(id) });
+    return json({ status: "success" });
+  }
+
   if (action === "save_product") {
     const id = input.id == null || input.id === "" ? null : validId(input.id);
     const name = String(input.name || "").trim();

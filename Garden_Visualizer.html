@@ -204,8 +204,7 @@
   body.visualizer-focus-mode #left-panel {
     width:100%!important; max-width:none!important; height:100%!important; min-width:0!important; min-height:0!important;
     flex:1 1 auto!important; padding:clamp(9px,1.2vw,18px)!important; border-radius:18px!important;
-    display:grid!important; grid-template-rows:auto auto auto minmax(0,1fr) auto auto!important;
-    align-content:stretch!important; gap:clamp(4px,.7dvh,9px)!important;
+    display:flex!important; flex-direction:column!important; align-content:stretch!important; gap:clamp(4px,.7dvh,9px)!important;
   }
   body.visualizer-focus-mode #right-panel { display:none!important; }
   body.visualizer-focus-mode .plan-section-heading { min-height:32px; margin:0!important; }
@@ -215,9 +214,9 @@
   body.visualizer-focus-mode .plan-control-row { min-height:38px; margin:0!important; }
   body.visualizer-focus-mode #planToolbarHost { margin:0!important; }
   body.visualizer-focus-mode #canvasArea {
-    width:auto!important; height:100%!important; aspect-ratio:1/1!important;
-    min-width:0!important; min-height:0!important; max-width:100%!important; max-height:100%!important;
-    flex:none!important; justify-self:center!important; align-self:center!important; margin:0 auto!important;
+    width:100%!important; height:100%!important; aspect-ratio:auto!important;
+    min-width:0!important; min-height:0!important; max-width:none!important; max-height:none!important;
+    flex:1 1 0%!important; justify-self:stretch!important; align-self:stretch!important; margin:0!important;
     border:1px solid #d9e2da!important; border-radius:24px!important;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.8),0 14px 38px rgba(19,48,32,.1)!important;
   }
@@ -680,15 +679,25 @@
     refreshGardenCanvas();
   }
 
-  button.addEventListener('click', () => {
+  button.addEventListener('click', async () => {
     const entering = !document.body.classList.contains('visualizer-focus-mode');
     setFocusMode(entering);
+    if (entering && document.documentElement.requestFullscreen) {
+      try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (error) { /* Keep the in-page expanded view when fullscreen is unavailable. */ }
+    } else if (!entering && document.fullscreenElement) {
+      try { await document.exitFullscreen(); } catch (error) { /* The expanded page view is already restored. */ }
+    }
+  });
+
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && document.body.classList.contains('visualizer-focus-mode')) setFocusMode(false);
   });
 
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape' || !document.body.classList.contains('visualizer-focus-mode')) return;
     if (guide && !guide.classList.contains('hidden')) return;
     setFocusMode(false);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     button.focus();
   }, true);
 })();

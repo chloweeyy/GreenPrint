@@ -140,6 +140,18 @@ ALTER TABLE system_alerts ADD COLUMN IF NOT EXISTS is_resolved BOOLEAN NOT NULL 
 ALTER TABLE system_alerts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE system_alerts ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
 
+CREATE TABLE IF NOT EXISTS alert_settings (
+    id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id IS TRUE),
+    temperature_max NUMERIC(5,2) NOT NULL DEFAULT 35 CHECK (temperature_max BETWEEN -30 AND 80),
+    humidity_min NUMERIC(5,2) NOT NULL DEFAULT 20 CHECK (humidity_min BETWEEN 0 AND 100),
+    humidity_max NUMERIC(5,2) NOT NULL DEFAULT 85 CHECK (humidity_max BETWEEN 0 AND 100),
+    soil_moisture_min NUMERIC(5,2) NOT NULL DEFAULT 30 CHECK (soil_moisture_min BETWEEN 0 AND 100),
+    water_level_min NUMERIC(5,2) NOT NULL DEFAULT 20 CHECK (water_level_min BETWEEN 0 AND 100),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (humidity_min < humidity_max)
+);
+INSERT INTO alert_settings (id) VALUES (TRUE) ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS alerts (
     id BIGSERIAL PRIMARY KEY,
     alert_type TEXT NOT NULL,
@@ -277,7 +289,7 @@ DECLARE
 BEGIN
     FOREACH app_table IN ARRAY ARRAY[
         'categories', 'products', 'transactions', 'transaction_items', 'admin_users',
-        'admin_logs', 'inventory_logs', 'system_alerts', 'alerts', 'plant_care_info',
+        'admin_logs', 'inventory_logs', 'system_alerts', 'alerts', 'alert_settings', 'plant_care_info',
         'sensor_readings', 'device_commands', 'watering_logs', 'watering_schedules'
     ] LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', app_table);

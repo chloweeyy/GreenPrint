@@ -16,6 +16,43 @@ $respond = static function (array $data, int $status = 200): void {
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 };
 
+$syncSystemAlerts = static function () use ($pdo): void {
+    $settings = $pdo->query('SELECT temperature_max, humidity_min, humidity_max, soil_moisture_min, water_level_min FROM alert_settings WHERE id = TRUE')->fetch(PDO::FETCH_ASSOC)
+        ?: ['temperature_max' => 35, 'humidity_min' => 20, 'humidity_max' => 85, 'soil_moisture_min' => 30, 'water_level_min' => 20];
+    $readings = $pdo->query('SELECT DISTINCT ON (zone_id) zone_id, temperature, humidity, soil_moisture, water_level FROM sensor_readings ORDER BY zone_id, COALESCE(created_at, reading_time) DESC')->fetchAll(PDO::FETCH_ASSOC);
+    $candidates = [];
+    foreach ($readings as $row) {
+        $zone = ($row['zone_id'] ?? 'zone1') === 'zone2' ? 'Zone 02 — Outdoor' : 'Zone 01 — Indoor';
+        $add = static function (string $type, string $text) use (&$candidates, $zone): void {
+            $candidates[] = ['type' => $type, 'prefix' => $zone . ': ', 'message' => $zone . ': ' . $text];
+        };
+        if ($row['temperature'] !== null && (float)$row['temperature'] > (float)$settings['temperature_max']) $add('TEMPERATURE', 'High temperature detected: ' . $row['temperature'] . '°C');
+        if ($row['humidity'] !== null && (float)$row['humidity'] < (float)$settings['humidity_min']) $add('HUMIDITY', 'Humidity is low: ' . $row['humidity'] . '%');
+        if ($row['humidity'] !== null && (float)$row['humidity'] > (float)$settings['humidity_max']) $add('HUMIDITY', 'Humidity is high: ' . $row['humidity'] . '%');
+        if ($row['soil_moisture'] !== null && (float)$row['soil_moisture'] < (float)$settings['soil_moisture_min']) $add('MOISTURE', 'Soil moisture is low: ' . $row['soil_moisture'] . '%');
+        if ($row['water_level'] !== null && (float)$row['water_level'] < (float)$settings['water_level_min']) $add('WATER_TANK', 'The main water reservoir is low: ' . $row['water_level'] . '%');
+    }
+    foreach ($pdo->query('SELECT id, name, stock FROM products WHERE stock <= 5 AND is_active IS TRUE')->fetchAll(PDO::FETCH_ASSOC) as $product) {
+        $prefix = 'Low stock: #' . $product['id'] . ' ';
+        $candidates[] = ['type' => 'LOW_STOCK', 'prefix' => $prefix, 'message' => $prefix . $product['name'] . ' has ' . $product['stock'] . ' left.'];
+    }
+    $managedTypes = ['TEMPERATURE', 'HUMIDITY', 'MOISTURE', 'WATER_TANK', 'LOW_STOCK'];
+    $active = $pdo->query('SELECT id, alert_type, message FROM system_alerts WHERE is_resolved IS FALSE')->fetchAll(PDO::FETCH_ASSOC);
+    $resolve = $pdo->prepare('UPDATE system_alerts SET is_resolved = TRUE, resolved_at = NOW() WHERE id = :id');
+    foreach ($active as $alert) {
+        if (in_array($alert['alert_type'], $managedTypes, true) && !array_filter($candidates, static fn(array $item): bool => $item['type'] === $alert['alert_type'] && str_starts_with($alert['message'], $item['prefix']))) {
+            $resolve->execute([':id' => $alert['id']]);
+        }
+    }
+    $recent = $pdo->prepare("SELECT 1 FROM system_alerts WHERE alert_type = :type AND message LIKE :prefix AND created_at > NOW() - INTERVAL '10 minutes' LIMIT 1");
+    $insert = $pdo->prepare('INSERT INTO system_alerts (alert_type, message) VALUES (:type, :message)');
+    foreach ($candidates as $item) {
+        if (array_filter($active, static fn(array $alert): bool => $alert['alert_type'] === $item['type'] && str_starts_with($alert['message'], $item['prefix']))) continue;
+        $recent->execute([':type' => $item['type'], ':prefix' => $item['prefix'] . '%']);
+        if (!$recent->fetchColumn()) $insert->execute([':type' => $item['type'], ':message' => $item['message']]);
+    }
+};
+
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         switch ($action) {
@@ -82,7 +119,12 @@ try {
                 $data = $stmt->fetchAll();
                 break;
             case 'alerts':
+                $syncSystemAlerts();
                 $data = $pdo->query('SELECT id, alert_type, message, created_at FROM system_alerts WHERE is_resolved = FALSE ORDER BY created_at DESC LIMIT 100')->fetchAll();
+                break;
+            case 'alert_settings':
+                $data = $pdo->query('SELECT temperature_max, humidity_min, humidity_max, soil_moisture_min, water_level_min FROM alert_settings WHERE id = TRUE')->fetchAll();
+                if (!$data) $data = [['temperature_max' => 35, 'humidity_min' => 20, 'humidity_max' => 85, 'soil_moisture_min' => 30, 'water_level_min' => 20]];
                 break;
             case 'sensor_history':
                 $data = $pdo->query('SELECT temperature, humidity, water_level, created_at FROM sensor_readings ORDER BY created_at DESC LIMIT 24')->fetchAll();
@@ -112,6 +154,30 @@ try {
     }
 
     switch ($action) {
+        case 'save_alert_settings':
+            $fields = ['temperature_max' => [-30, 80], 'humidity_min' => [0, 100], 'humidity_max' => [0, 100], 'soil_moisture_min' => [0, 100], 'water_level_min' => [0, 100]];
+            $values = [];
+            foreach ($fields as $field => [$min, $max]) {
+                $value = filter_var($input[$field] ?? null, FILTER_VALIDATE_FLOAT);
+                if ($value === false || $value < $min || $value > $max) throw new InvalidArgumentException('Enter valid alert thresholds within the displayed ranges.');
+                $values[$field] = $value;
+            }
+            if ($values['humidity_min'] >= $values['humidity_max']) throw new InvalidArgumentException('Minimum humidity must be lower than maximum humidity.');
+            $stmt = $pdo->prepare('INSERT INTO alert_settings (id, temperature_max, humidity_min, humidity_max, soil_moisture_min, water_level_min, updated_at) VALUES (TRUE, :temperature, :humidity_min, :humidity_max, :moisture, :water, NOW()) ON CONFLICT (id) DO UPDATE SET temperature_max = EXCLUDED.temperature_max, humidity_min = EXCLUDED.humidity_min, humidity_max = EXCLUDED.humidity_max, soil_moisture_min = EXCLUDED.soil_moisture_min, water_level_min = EXCLUDED.water_level_min, updated_at = NOW()');
+            $stmt->execute([':temperature' => $values['temperature_max'], ':humidity_min' => $values['humidity_min'], ':humidity_max' => $values['humidity_max'], ':moisture' => $values['soil_moisture_min'], ':water' => $values['water_level_min']]);
+            audit_admin($pdo, $currentAdmin, 'save_alert_settings', 'alert_settings', 'global', $values);
+            $respond(['status' => 'success']);
+            break;
+
+        case 'resolve_alert':
+            $alertId = filter_var($input['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if ($alertId === false) throw new InvalidArgumentException('Choose a valid alert.');
+            $stmt = $pdo->prepare('UPDATE system_alerts SET is_resolved = TRUE, resolved_at = NOW() WHERE id = :id AND is_resolved IS FALSE');
+            $stmt->execute([':id' => $alertId]);
+            audit_admin($pdo, $currentAdmin, 'resolve_alert', 'system_alert', (string)$alertId, []);
+            $respond(['status' => 'success']);
+            break;
+
         case 'save_product':
             $rawId = $input['id'] ?? null;
             $id = $rawId === null || $rawId === '' ? null : filter_var($rawId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

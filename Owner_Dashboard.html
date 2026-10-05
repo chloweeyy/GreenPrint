@@ -167,23 +167,24 @@
   }
 
   #alertBanner{
-    border:1px solid #f0c7ba;
-    background:var(--coral-pale);
+    border:1px solid #cfe2d3;
+    background:#f1f7f1;
     border-radius:var(--radius-lg);
     padding:16px 20px;
     margin-bottom:28px;
-    display:none;
+    display:block;
     box-shadow:var(--shadow-sm);
   }
-  #alertBanner.show{display:block;}
+  #alertBanner.has-alerts{border-color:#f0c7ba;background:var(--coral-pale);}
   .alert-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
-  .alert-head-left{display:flex;align-items:center;gap:10px;font-weight:700;color:#a8402c;font-size:14.5px;}
+  .alert-head-left{display:flex;align-items:center;gap:10px;font-weight:700;color:#315f41;font-size:14.5px;}
   .alert-icon{width:18px;height:18px;flex:none;}
   .alert-count{
-    background:var(--coral);color:#fff;font-size:11px;font-weight:700;
+    background:var(--sage);color:#fff;font-size:11px;font-weight:700;
     padding:1px 9px;border-radius:20px;
   }
-  .alert-toggle{color:#a8402c;font-size:12.5px;font-weight:600;}
+  .alert-toggle{color:#315f41;font-size:12.5px;font-weight:600;}
+  #alertBanner.has-alerts .alert-head-left,#alertBanner.has-alerts .alert-toggle{color:#a8402c;}
   #alertList{list-style:none;margin:14px 0 2px;padding:0;display:none;}
   #alertList.open{display:block;}
   #alertList li{
@@ -195,6 +196,17 @@
     color:#a8402c;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;
     background:#fff;padding:2px 8px;border-radius:20px;flex:none;
   }
+  .alert-dismiss{margin-left:auto;flex:none;border:1px solid #edc4b7;border-radius:999px;background:#fff;padding:5px 10px;color:#8f3928;font-size:11px;font-weight:700;cursor:pointer}
+  .alert-settings{margin:0 0 22px;padding:14px 18px;border:1px solid var(--card-border);border-radius:var(--radius-lg);background:var(--card);box-shadow:var(--shadow-sm)}
+  .alert-settings summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--ink);list-style:none}
+  .alert-settings summary::-webkit-details-marker{display:none}
+  .alert-settings summary:after{content:'＋';float:right;color:var(--sage)}
+  .alert-settings[open] summary:after{content:'−'}
+  .threshold-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin:14px 0}
+  .threshold-grid label{display:grid;gap:5px;color:var(--ink-muted);font-size:11px;font-weight:600}
+  .threshold-grid input{width:100%;min-height:40px;border:1px solid var(--card-border);border-radius:10px;padding:8px 10px;color:var(--ink);background:#fff}
+  .threshold-save-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  #alertSettingsStatus{font-size:12px;color:var(--ink-muted)}
 
   .section-eyebrow{
     font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;
@@ -369,6 +381,19 @@
       </div>
       <ul id="alertList"></ul>
     </div>
+    <details class="alert-settings" id="alertSettingsPanel">
+      <summary>Alert thresholds <span style="font-weight:400;color:var(--ink-muted)">· Adjust when the owner dashboard raises sensor alerts</span></summary>
+      <form id="alertSettingsForm">
+        <div class="threshold-grid">
+          <label>High temperature (°C)<input name="temperature_max" type="number" min="-30" max="80" step="0.1" required></label>
+          <label>Low humidity (%)<input name="humidity_min" type="number" min="0" max="100" step="0.1" required></label>
+          <label>High humidity (%)<input name="humidity_max" type="number" min="0" max="100" step="0.1" required></label>
+          <label>Low soil moisture (%)<input name="soil_moisture_min" type="number" min="0" max="100" step="0.1" required></label>
+          <label>Low tank level (%)<input name="water_level_min" type="number" min="0" max="100" step="0.1" required></label>
+        </div>
+        <div class="threshold-save-row"><button class="btn" type="submit" style="background:var(--forest);color:#fff;padding:8px 14px">Save thresholds</button><span id="alertSettingsStatus" aria-live="polite">Default thresholds are 35°C, 20–85% humidity, 30% soil moisture, and 20% tank level.</span></div>
+      </form>
+    </details>
 
     <div class="section-eyebrow">Live zones</div>
     <div class="zones" id="zoneContainer"></div>
@@ -596,6 +621,7 @@
   let ALL_ADMIN_PRODUCTS = [];
   let CURRENT_SALES_ROWS = [];
   let SALES_DATE_RANGE_INITIALIZED = false;
+  let SALES_DEFAULTS_SET = false;
   let SALES_EARLIEST_DATE = '2000-01-01';
   let csrfToken = ADMIN_CSRF;
   const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
@@ -674,7 +700,7 @@
       sessionStorage.setItem('kgg_admin_csrf', csrfToken);
       document.body.style.visibility = 'visible';
       tickClock();
-      await Promise.all([fetchWateringSchedules(), fetchSharedWateringState(), fetchLiveLowStock(), loadAdminInventory(), fetchLiveSensorData(), fetchLiveChartData(), fetchLiveWateringHistory(), fetchLiveAlerts()]);
+      await Promise.all([fetchWateringSchedules(), fetchSharedWateringState(), fetchLiveLowStock(), loadAdminInventory(), fetchLiveSensorData(), fetchLiveChartData(), fetchLiveWateringHistory(), fetchLiveAlerts(), fetchAlertSettings()]);
       setInterval(fetchLiveSensorData, 15000);
       setInterval(fetchLiveChartData, 30000);
       setInterval(fetchLiveWateringHistory, 15000);
@@ -884,8 +910,11 @@
       body.innerHTML = '<tr><td colspan="3" style="padding:20px;text-align:center;">Sales data unavailable.</td></tr>';
       return false;
     }
-    if (!fromInput.value) fromInput.value = SALES_EARLIEST_DATE;
-    if (!toInput.value) toInput.value = today;
+    if (!SALES_DEFAULTS_SET) {
+      if (!fromInput.value) fromInput.value = SALES_EARLIEST_DATE;
+      if (!toInput.value) toInput.value = today;
+      SALES_DEFAULTS_SET = true;
+    }
     const from = fromInput.value;
     const to = toInput.value;
     if (from > today || to > today) {
@@ -919,8 +948,8 @@
   }
 
   function clearSalesDateFilter() {
-    document.getElementById('salesFromDate').value = SALES_EARLIEST_DATE;
-    document.getElementById('salesToDate').value = salesDateKey(new Date());
+    document.getElementById('salesFromDate').value = '';
+    document.getElementById('salesToDate').value = '';
     loadSalesReports();
   }
 
@@ -1070,12 +1099,45 @@
     try {
       const data = await adminRequest('alerts') || [];
       document.getElementById('alertCount').textContent = String(data.length);
-      document.getElementById('alertBanner').classList.toggle('show', data.length > 0);
-      document.getElementById('alertList').innerHTML = data.map(item =>
-        '<li><span class="tag">' + escapeHtml(item.alert_type) + '</span>' + escapeHtml(item.message) + '</li>'
-      ).join('');
-    } catch (error) {}
+      document.getElementById('alertBanner').classList.toggle('has-alerts', data.length > 0);
+      document.getElementById('alertList').innerHTML = data.length ? data.map(item =>
+        '<li><span class="tag">' + escapeHtml(item.alert_type) + '</span>' + escapeHtml(item.message) + '<button class="alert-dismiss" type="button" data-alert-id="' + Number(item.id) + '">Acknowledge</button></li>'
+      ).join('') : '<li style="color:var(--ink-muted)">All clear. Sensor readings and low stock are being monitored.</li>';
+    } catch (error) {
+      document.getElementById('alertCount').textContent = '!';
+      document.getElementById('alertBanner').classList.add('has-alerts');
+      document.getElementById('alertList').innerHTML = '<li>Alert status could not be loaded. Check the admin service connection.</li>';
+    }
   }
+  async function fetchAlertSettings() {
+    try {
+      const rows = await adminRequest('alert_settings') || [];
+      const settings = rows[0];
+      if (!settings) return;
+      const form = document.getElementById('alertSettingsForm');
+      Object.keys(settings).forEach(key => { if (form.elements[key]) form.elements[key].value = settings[key]; });
+      document.getElementById('alertSettingsStatus').textContent = 'Thresholds apply to incoming sensor readings.';
+    } catch (error) { document.getElementById('alertSettingsStatus').textContent = error.message || 'Alert thresholds could not be loaded.'; }
+  }
+  document.getElementById('alertSettingsForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const status = document.getElementById('alertSettingsStatus');
+    const payload = Object.fromEntries(new FormData(form).entries());
+    Object.keys(payload).forEach(key => { payload[key] = Number(payload[key]); });
+    try {
+      await adminRequest('save_alert_settings', payload);
+      status.textContent = 'Thresholds saved. New sensor readings will use these values.';
+      await fetchLiveAlerts();
+    } catch (error) { status.textContent = error.message || 'Thresholds could not be saved.'; }
+  });
+  document.getElementById('alertList').addEventListener('click', async event => {
+    const button = event.target.closest('[data-alert-id]');
+    if (!button) return;
+    button.disabled = true;
+    try { await adminRequest('resolve_alert', { id: Number(button.dataset.alertId) }); await fetchLiveAlerts(); }
+    catch (error) { button.disabled = false; window.alert(error.message || 'Alert could not be acknowledged.'); }
+  });
   document.getElementById('alertHead').addEventListener('click', () => {
     const list = document.getElementById('alertList');
     const open = list.classList.toggle('open');

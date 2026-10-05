@@ -24,10 +24,14 @@ try {
     $pdo->beginTransaction();
     $insert = $pdo->prepare('INSERT INTO sensor_readings (zone_id, temperature, humidity, soil_moisture, water_level, reading_time, created_at) VALUES (:zone, :temperature, :humidity, :moisture, :water_level, NOW(), NOW())');
     $insert->execute([':zone' => $zoneId, ':temperature' => $temperature, ':humidity' => $humidity, ':moisture' => $moisture, ':water_level' => $waterLevel]);
+    $settings = $pdo->query('SELECT temperature_max, humidity_min, humidity_max, soil_moisture_min, water_level_min FROM alert_settings WHERE id = TRUE')->fetch(PDO::FETCH_ASSOC)
+        ?: ['temperature_max' => 35, 'humidity_min' => 20, 'humidity_max' => 85, 'soil_moisture_min' => 30, 'water_level_min' => 20];
     $conditions = [];
-    if ($temperature > 35) $conditions[] = ['TEMPERATURE', 'High temperature detected: ' . $temperature . '°C'];
-    if ($moisture < 30) $conditions[] = ['MOISTURE', 'Soil moisture is low: ' . $moisture . '%'];
-    if ($waterLevel < 20) $conditions[] = ['WATER_TANK', 'The main water reservoir is low: ' . $waterLevel . '%'];
+    if ($temperature > (float)$settings['temperature_max']) $conditions[] = ['TEMPERATURE', 'High temperature detected: ' . $temperature . '°C'];
+    if ($humidity < (float)$settings['humidity_min']) $conditions[] = ['HUMIDITY', 'Humidity is low: ' . $humidity . '%'];
+    if ($humidity > (float)$settings['humidity_max']) $conditions[] = ['HUMIDITY', 'Humidity is high: ' . $humidity . '%'];
+    if ($moisture < (float)$settings['soil_moisture_min']) $conditions[] = ['MOISTURE', 'Soil moisture is low: ' . $moisture . '%'];
+    if ($waterLevel < (float)$settings['water_level_min']) $conditions[] = ['WATER_TANK', 'The main water reservoir is low: ' . $waterLevel . '%'];
     $alertCheck = $pdo->prepare("SELECT 1 FROM system_alerts WHERE alert_type = :type AND is_resolved IS FALSE AND created_at > NOW() - INTERVAL '10 minutes' LIMIT 1");
     $alertInsert = $pdo->prepare('INSERT INTO system_alerts (alert_type, message) VALUES (:type, :message)');
     foreach ($conditions as [$type, $message]) {
