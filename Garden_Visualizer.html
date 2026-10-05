@@ -371,7 +371,11 @@
       console.error('Could not load visualizer inventory:', err);
       const localHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
       const hasPublicConfig = Boolean(window.GREENPRINT_CONFIG && window.GREENPRINT_CONFIG.supabaseUrl && window.GREENPRINT_CONFIG.supabaseAnonKey);
-      const message = !localHost && !hasPublicConfig
+      const configError = window.GREENPRINT_CONFIG_ERROR && window.GREENPRINT_CONFIG_ERROR.message || '';
+      const invalidSupabaseUrl = !localHost && /SUPABASE_URL must be a valid HTTPS Supabase project URL/i.test(configError);
+      const message = invalidSupabaseUrl
+        ? 'Netlify can see the Supabase settings, but SUPABASE_URL is not a valid project URL.\n\nIn your existing Supabase project, open Project Settings → API and copy the Project URL. It should look like https://<project-ref>.supabase.co. Paste only that URL into Netlify’s SUPABASE_URL value (not the database host, API key, or variable name), save, and redeploy.'
+        : !localHost && !hasPublicConfig
         ? 'Inventory connection is not configured for this Netlify site.\n\nIn Netlify, open Project configuration → Environment variables. Add SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_PUBLISHABLE_KEY) with Functions access, using the browser-safe values from your existing Supabase project, then redeploy. Do not use the service-role key.'
         : 'Inventory could not connect to Supabase. Check that the public catalog SELECT policy and grants from database.sql are applied, then reload the deployed site.';
       document.getElementById('inventoryList').innerHTML = '<p role="alert" class="text-center text-sm leading-relaxed text-on-surface-variant mt-5 px-2 whitespace-pre-line">' + escapeHtml(message) + '</p>';
