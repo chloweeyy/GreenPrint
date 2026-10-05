@@ -1,16 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" preserveAspectRatio="xMidYMid meet">
   <defs>
-    <pattern id="stone" width="56" height="40" patternUnits="userSpaceOnUse"><rect width="56" height="40" fill="#c8c9c2"/><path d="M0 1h55M1 1v38m27-38v38m27-38v38" fill="none" stroke="#a5a8a2" stroke-width="2"/></pattern>
-    <pattern id="deck" width="36" height="36" patternUnits="userSpaceOnUse"><rect width="36" height="36" fill="#c79b6a"/><path d="M2 0v36M34 0v36" stroke="#a87950" stroke-width="2"/></pattern>
+    <linearGradient id="lawn" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#91a27c"/><stop offset="1" stop-color="#788d6b"/></linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9bbdc0"/><stop offset="1" stop-color="#6f999d"/></linearGradient>
+    <linearGradient id="soil" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#695640"/><stop offset="1" stop-color="#514333"/></linearGradient>
+    <pattern id="stone" width="56" height="40" patternUnits="userSpaceOnUse"><rect width="56" height="40" fill="#d1d0c9"/><path d="M0 1h55M1 1v38m27-38v38m27-38v38" fill="none" stroke="#b8b8b1" stroke-width="1"/></pattern>
+    <pattern id="deck" width="36" height="36" patternUnits="userSpaceOnUse"><rect width="36" height="36" fill="#b99a76"/><path d="M2 0v36M34 0v36" stroke="#a48767" stroke-width="1" opacity=".6"/></pattern>
+    <filter id="lift" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#273126" flood-opacity=".16"/></filter>
   </defs>
-  <rect width="1200" height="760" fill="#e9ece7"/>
-  <rect x="48" y="40" width="1104" height="680" rx="6" fill="#a9c875" stroke="#687e4e" stroke-width="18"/>
-  <rect x="66" y="58" width="1068" height="644" fill="none" stroke="#e0dfd3" stroke-width="5"/>
-  <rect x="102" y="104" width="360" height="284" fill="url(#stone)" stroke="#92958f" stroke-width="12"/>
-  <rect x="126" y="128" width="312" height="236" rx="52" fill="#7fcbd8" stroke="#f4f1e9" stroke-width="14"/>
-  <path d="M148 168h268M148 324h268" stroke="#bcecf0" stroke-width="7" opacity=".7"/>
+  <rect width="1200" height="760" fill="#f0f2ed"/>
+  <rect x="48" y="40" width="1104" height="680" rx="16" fill="url(#lawn)" stroke="#6c7b65" stroke-width="10" filter="url(#lift)"/>
+  <rect x="66" y="58" width="1068" height="644" rx="9" fill="none" stroke="#e7e8de" stroke-width="3"/>
+  <rect x="102" y="104" width="360" height="284" rx="6" fill="url(#stone)" stroke="#a3a59f" stroke-width="7"/>
+  <rect x="126" y="128" width="312" height="236" rx="52" fill="url(#water)" stroke="#e9ece4" stroke-width="10"/>
+  <path d="M148 168h268M148 324h268" stroke="#d2e0dd" stroke-width="5" opacity=".62"/>
   <rect x="530" y="104" width="338" height="220" fill="url(#deck)" stroke="#916c49" stroke-width="12"/>
   <rect x="930" y="104" width="166" height="520" fill="url(#stone)" stroke="#92958f" stroke-width="10"/>
-  <rect x="108" y="454" width="354" height="148" rx="4" fill="#76563b" stroke="#b38a5c" stroke-width="14"/>
+  <rect x="108" y="454" width="354" height="148" rx="7" fill="url(#soil)" stroke="#a78a68" stroke-width="8"/>
   <rect x="530" y="408" width="338" height="194" fill="url(#deck)" stroke="#916c49" stroke-width="12"/>
 </svg>

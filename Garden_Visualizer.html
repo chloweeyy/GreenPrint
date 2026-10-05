@@ -156,7 +156,7 @@
     #planLayerHost { margin-bottom:6px!important; }
     #canvasArea { flex:1 1 0%!important; width:100%!important; height:auto!important; min-height:150px!important; max-height:none!important; touch-action:none; border-radius:16px!important; }
     #planScaleHost { min-height:19px!important; }
-    #aiSuggestion { max-height:56px; overflow:auto; margin-top:5px!important; padding:6px 10px!important; }
+    #aiSuggestion { max-height:78px; overflow:auto; margin-top:5px!important; padding:6px 10px!important; }
     #right-panel { width:clamp(240px,25vw,320px)!important; min-width:240px!important; min-height:0!important; height:100%!important; flex:0 0 clamp(240px,25vw,320px)!important; gap:8px!important; }
     #right-panel > div { min-height:0!important; padding:12px!important; border-radius:20px!important; }
     #right-panel h3 { font-size:16px!important; }
@@ -189,8 +189,8 @@
     .scene-picker-summary { min-height:36px; }
     .plan-control-row { min-height:36px; }
   }
-  /* Expanded planner: put the scene controls in a compact top band and give
-     the rest of the available viewport to the garden canvas. */
+  /* Expanded planner: keep controls in reserved rows and give the plan a
+     large square workspace without placing labels over the drawing. */
   html:has(body.visualizer-focus-mode), body.visualizer-focus-mode {
     width:100%!important; height:100dvh!important; min-height:0!important; overflow:hidden!important;
   }
@@ -204,21 +204,28 @@
   body.visualizer-focus-mode #left-panel {
     width:100%!important; max-width:none!important; height:100%!important; min-width:0!important; min-height:0!important;
     flex:1 1 auto!important; padding:clamp(9px,1.2vw,18px)!important; border-radius:18px!important;
+    display:grid!important; grid-template-rows:auto auto auto minmax(0,1fr) auto auto!important;
+    align-content:stretch!important; gap:clamp(4px,.7dvh,9px)!important;
   }
   body.visualizer-focus-mode #right-panel { display:none!important; }
-  body.visualizer-focus-mode .plan-section-heading { min-height:34px; }
+  body.visualizer-focus-mode .plan-section-heading { min-height:32px; margin:0!important; }
   body.visualizer-focus-mode .plan-section-heading h3 { font-size:clamp(15px,1.4vw,20px)!important; }
-  body.visualizer-focus-mode .scene-picker { margin-bottom:6px!important; }
+  body.visualizer-focus-mode .scene-picker { margin:0!important; }
   body.visualizer-focus-mode .scene-picker-summary { min-height:38px; }
-  body.visualizer-focus-mode .plan-control-row { min-height:40px; margin-bottom:5px!important; }
+  body.visualizer-focus-mode .plan-control-row { min-height:38px; margin:0!important; }
   body.visualizer-focus-mode #planToolbarHost { margin:0!important; }
   body.visualizer-focus-mode #canvasArea {
-    width:100%!important; height:auto!important; min-height:0!important; max-height:none!important;
-    flex:1 1 0%!important; border-radius:16px!important;
+    width:auto!important; height:100%!important; aspect-ratio:1/1!important;
+    min-width:0!important; min-height:0!important; max-width:100%!important; max-height:100%!important;
+    flex:none!important; justify-self:center!important; align-self:center!important; margin:0 auto!important;
+    border:1px solid #d9e2da!important; border-radius:24px!important;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.8),0 14px 38px rgba(19,48,32,.1)!important;
   }
-  body.visualizer-focus-mode #planScaleHost { min-height:20px!important; }
-  body.visualizer-focus-mode #planLayerHost { max-height:18dvh; overflow:auto; }
-  body.visualizer-focus-mode #aiSuggestion { max-height:12dvh; overflow:auto; margin-top:5px!important; padding:6px 10px!important; }
+  body.visualizer-focus-mode #planScaleHost { min-height:18px!important; }
+  body.visualizer-focus-mode #planLayerHost { max-height:64px!important; overflow:auto; margin:0!important; }
+  body.visualizer-focus-mode #aiSuggestion { max-height:84px!important; overflow:hidden!important; margin:0!important; padding:6px 10px!important; }
+  body.visualizer-focus-mode #aiSuggestion .recommendation-note,
+  body.visualizer-focus-mode #aiSuggestion .recommendation-footnote { display:none!important; }
   #focusModeBtn {
     display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:36px; padding:5px 10px;
     border:1px solid rgba(14,108,74,.2); border-radius:999px; background:#0e6c4a; color:#fff;
@@ -268,12 +275,12 @@
           <span class="scene-picker-chevron material-symbols-outlined" aria-hidden="true">expand_more</span>
         </summary>
         <div class="template-strip flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-        <button type="button" class="template-card" data-scene="living-room" onclick="loadTemplate('living-room', this)" style="background-image:url('IMAGE/template-living-room.svg?v=20261001-clean-scenes')"><span class="template-label">Living room</span></button>
-        <button type="button" class="template-card" data-scene="office" onclick="loadTemplate('office', this)" style="background-image:url('IMAGE/template-office.svg?v=20261001-clean-scenes')"><span class="template-label">Office</span></button>
-        <button type="button" class="template-card" data-scene="bedroom" onclick="loadTemplate('bedroom', this)" style="background-image:url('IMAGE/template-bedroom.svg?v=20261001-clean-scenes')"><span class="template-label">Bedroom</span></button>
-        <button type="button" class="template-card" data-scene="backyard" onclick="loadTemplate('backyard', this)" style="background-image:url('IMAGE/planner-backyard-empty.svg?v=20261001-clean-scenes')"><span class="template-label">Backyard</span></button>
-        <button type="button" class="template-card" data-scene="garden" onclick="loadTemplate('garden', this)" style="background-image:url('IMAGE/planner-kitchen-garden-empty.svg?v=20261001-clean-scenes')"><span class="template-label">Garden</span></button>
-        <button type="button" class="template-card" data-scene="resort" onclick="loadTemplate('resort', this)" style="background-image:url('IMAGE/planner-resort-empty.svg?v=20261001-clean-scenes')"><span class="template-label">Resort</span></button>
+        <button type="button" class="template-card" data-scene="living-room" onclick="loadTemplate('living-room', this)" style="background-image:url('IMAGE/template-living-room.svg?v=20261004-polished-scenes')"><span class="template-label">Living room</span></button>
+        <button type="button" class="template-card" data-scene="office" onclick="loadTemplate('office', this)" style="background-image:url('IMAGE/template-office.svg?v=20261004-polished-scenes')"><span class="template-label">Office</span></button>
+        <button type="button" class="template-card" data-scene="bedroom" onclick="loadTemplate('bedroom', this)" style="background-image:url('IMAGE/template-bedroom.svg?v=20261004-polished-scenes')"><span class="template-label">Bedroom</span></button>
+        <button type="button" class="template-card" data-scene="backyard" onclick="loadTemplate('backyard', this)" style="background-image:url('IMAGE/planner-backyard-empty.svg?v=20261004-polished-scenes')"><span class="template-label">Backyard</span></button>
+        <button type="button" class="template-card" data-scene="garden" onclick="loadTemplate('garden', this)" style="background-image:url('IMAGE/planner-kitchen-garden-empty.svg?v=20261004-polished-scenes')"><span class="template-label">Garden</span></button>
+        <button type="button" class="template-card" data-scene="resort" onclick="loadTemplate('resort', this)" style="background-image:url('IMAGE/planner-resort-empty.svg?v=20261004-polished-scenes')"><span class="template-label">Resort</span></button>
         </div>
       </details>
       <div id="planHint" aria-live="polite"></div>
@@ -281,8 +288,8 @@
 
     <div class="plan-control-row">
       <div id="planToolbarHost" aria-live="polite">
-        <button onclick="triggerAIDecorate()" id="aiDecorateBtn" disabled class="bg-secondary text-white font-label-bold shadow-md hover:bg-primary transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Generate a garden plan with AI">
-          <span class="material-symbols-outlined text-[18px]">auto_awesome</span> Generate Garden Plan
+        <button onclick="triggerAIDecorate()" id="aiDecorateBtn" disabled class="bg-secondary text-white font-label-bold shadow-md hover:bg-primary transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Suggest a garden layout from in-stock plants">
+          <span class="material-symbols-outlined text-[18px]">auto_awesome</span> Suggest a Layout
         </button>
       </div>
     </div>
@@ -294,8 +301,8 @@
 
       <div id="canvasLoader" class="absolute inset-0 bg-black/60 backdrop-blur-md z-50 hidden items-center justify-center text-white flex-col">
         <span class="material-symbols-outlined text-5xl animate-spin mb-3 text-secondary-fixed">autorenew</span>
-        <span class="font-headline-md text-xl tracking-wide">AI Decorating...</span>
-        <span class="text-xs text-surface-variant mt-2 opacity-80">Fetching items from your inventory</span>
+        <span class="font-headline-md text-xl tracking-wide">Planning your garden...</span>
+        <span class="text-xs text-surface-variant mt-2 opacity-80">Matching this scene with in-stock plants and pots</span>
       </div>
       
       <div id="canvasPlaceholder" class="text-center z-10 relative bg-white/80 p-6 rounded-2xl backdrop-blur-sm border border-outline-variant/20 shadow-lg max-w-sm">
@@ -434,13 +441,13 @@
 
     let bgUrl = '';
     if (themeType === 'empty_room') {
-        bgUrl = 'IMAGE/planner-resort-empty.svg?v=20261001-clean-scenes';
+        bgUrl = 'IMAGE/planner-resort-empty.svg?v=20261004-polished-scenes';
         currentThemeName = "Pool Courtyard Garden";
     } else if (themeType === 'patio') {
-        bgUrl = 'IMAGE/planner-backyard-empty.svg?v=20261001-clean-scenes';
+        bgUrl = 'IMAGE/planner-backyard-empty.svg?v=20261004-polished-scenes';
         currentThemeName = "Cottage Patio Garden";
     } else if (themeType === 'lawn') {
-        bgUrl = 'IMAGE/planner-kitchen-garden-empty.svg?v=20261001-clean-scenes';
+        bgUrl = 'IMAGE/planner-kitchen-garden-empty.svg?v=20261004-polished-scenes';
         currentThemeName = "Kitchen Garden";
     }
 
@@ -650,7 +657,7 @@
     <button id="closeVisualizerGuide" type="button" class="min-h-12 w-full rounded-2xl bg-primary px-5 py-3 font-bold text-white">Start planning</button>
   </div>
 </div>
-<script src="garden_visualizer_3d.js?v=20261004-expanded-focus-v23"></script>
+<script src="garden_visualizer_3d.js?v=20261004-professional-planner-v24"></script>
 <script>
 (() => {
   const button = document.getElementById('focusModeBtn');

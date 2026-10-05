@@ -1,21 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" preserveAspectRatio="xMidYMid meet">
   <defs>
-    <pattern id="wood-floor" width="84" height="44" patternUnits="userSpaceOnUse">
-      <rect width="84" height="44" fill="#c9a57d"/>
-      <path d="M0 2h84M42 2v42" stroke="#ad875f" stroke-width="2"/>
-    </pattern>
+    <linearGradient id="room-floor" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#cfb697"/><stop offset="1" stop-color="#bfa180"/></linearGradient>
+    <linearGradient id="warm-sofa" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#aa8167"/><stop offset="1" stop-color="#89674f"/></linearGradient>
+    <linearGradient id="cool-sofa" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#879a90"/><stop offset="1" stop-color="#6e8179"/></linearGradient>
+    <filter id="furniture-shadow" x="-15%" y="-15%" width="130%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#30342d" flood-opacity=".2"/></filter>
   </defs>
-  <rect width="1200" height="760" fill="#e9ece7"/>
-  <rect x="130" y="72" width="940" height="616" fill="url(#wood-floor)" stroke="#7c827d" stroke-width="16"/>
-  <rect x="138" y="80" width="924" height="66" fill="#f4f2eb"/>
-  <rect x="218" y="95" width="250" height="38" fill="#b8d8dc" stroke="#f8f7f2" stroke-width="8"/>
-  <rect x="732" y="95" width="250" height="38" fill="#b8d8dc" stroke="#f8f7f2" stroke-width="8"/>
+  <rect width="1200" height="760" fill="#f0f2ed"/>
+  <rect x="130" y="72" width="940" height="616" rx="8" fill="url(#room-floor)" stroke="#858980" stroke-width="9"/>
+  <rect x="138" y="80" width="924" height="66" fill="#f5f3ed"/>
+  <rect x="218" y="95" width="250" height="38" fill="#a8c4c5" stroke="#f8f7f2" stroke-width="6"/>
+  <rect x="732" y="95" width="250" height="38" fill="#a8c4c5" stroke="#f8f7f2" stroke-width="6"/>
   <g>
-    <rect x="244" y="304" width="224" height="150" rx="28" fill="#a97859" stroke="#79573f" stroke-width="12"/>
-    <rect x="270" y="321" width="172" height="48" rx="8" fill="#ceb08c"/>
-    <rect x="714" y="304" width="224" height="150" rx="28" fill="#758b82" stroke="#53675f" stroke-width="12"/>
-    <rect x="740" y="321" width="172" height="48" rx="8" fill="#b6c6b9"/>
+    <rect x="244" y="304" width="224" height="150" rx="28" fill="url(#warm-sofa)" stroke="#795f4d" stroke-width="7" filter="url(#furniture-shadow)"/>
+    <rect x="270" y="321" width="172" height="48" rx="10" fill="#d0b89a"/>
+    <rect x="714" y="304" width="224" height="150" rx="28" fill="url(#cool-sofa)" stroke="#5f7168" stroke-width="7" filter="url(#furniture-shadow)"/>
+    <rect x="740" y="321" width="172" height="48" rx="10" fill="#b8c7bd"/>
   </g>
-  <rect x="520" y="324" width="160" height="112" rx="14" fill="#805c42" stroke="#e8d4b7" stroke-width="10"/>
-  <circle cx="600" cy="380" r="16" fill="#e9d5ba"/>
+  <rect x="520" y="324" width="160" height="112" rx="18" fill="#80674e" stroke="#eee6d8" stroke-width="7" filter="url(#furniture-shadow)"/>
+  <circle cx="600" cy="380" r="11" fill="#eee6d8"/>
 </svg>

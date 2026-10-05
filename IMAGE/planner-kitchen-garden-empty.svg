@@ -1,19 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" preserveAspectRatio="xMidYMid meet">
   <defs>
-    <pattern id="path" width="56" height="40" patternUnits="userSpaceOnUse"><rect width="56" height="40" fill="#c8c9c2"/><path d="M0 1h55M1 1v38m27-38v38m27-38v38" fill="none" stroke="#a5a8a2" stroke-width="2"/></pattern>
+    <linearGradient id="lawn" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#91a27c"/><stop offset="1" stop-color="#788d6b"/></linearGradient>
+    <linearGradient id="soil" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#695640"/><stop offset="1" stop-color="#514333"/></linearGradient>
+    <pattern id="path" width="56" height="40" patternUnits="userSpaceOnUse"><rect width="56" height="40" fill="#d1d0c9"/><path d="M0 1h55M1 1v38m27-38v38m27-38v38" fill="none" stroke="#b8b8b1" stroke-width="1"/></pattern>
+    <filter id="lift" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#273126" flood-opacity=".16"/></filter>
   </defs>
-  <rect width="1200" height="760" fill="#e9ece7"/>
-  <rect x="48" y="40" width="1104" height="680" rx="6" fill="#a9c875" stroke="#687e4e" stroke-width="18"/>
-  <rect x="66" y="58" width="1068" height="644" fill="none" stroke="#e0dfd3" stroke-width="5"/>
-  <rect x="100" y="92" width="264" height="164" fill="#b7bbb5" stroke="#727a74" stroke-width="10"/>
+  <rect width="1200" height="760" fill="#f0f2ed"/>
+  <rect x="48" y="40" width="1104" height="680" rx="16" fill="url(#lawn)" stroke="#6c7b65" stroke-width="10" filter="url(#lift)"/>
+  <rect x="66" y="58" width="1068" height="644" rx="9" fill="none" stroke="#e7e8de" stroke-width="3"/>
+  <rect x="100" y="92" width="264" height="164" fill="#d8d7d0" stroke="#92968f" stroke-width="6"/>
   <rect x="121" y="111" width="222" height="48" fill="#e3e5df" stroke="#999f99" stroke-width="5"/>
   <rect x="204" y="165" width="56" height="91" fill="#8a674a" stroke="#644d3a" stroke-width="6"/>
-  <rect x="836" y="92" width="264" height="176" fill="#b9dadd" stroke="#71847e" stroke-width="10"/>
-  <path d="M858 108v144m70-144v144m70-144v144M846 165h244M846 218h244" stroke="#eef3ee" stroke-width="7"/>
+  <rect x="836" y="92" width="264" height="176" fill="#83adb0" stroke="#85948d" stroke-width="6"/>
+  <path d="M858 108v144m70-144v144m70-144v144M846 165h244M846 218h244" stroke="#e3ece8" stroke-width="5"/>
   <rect x="548" y="290" width="104" height="400" fill="url(#path)" stroke="#a4a69f" stroke-width="6"/>
-  <rect x="104" y="320" width="310" height="126" rx="4" fill="#76563b" stroke="#b38a5c" stroke-width="14"/>
-  <rect x="104" y="485" width="310" height="126" rx="4" fill="#76563b" stroke="#b38a5c" stroke-width="14"/>
-  <rect x="786" y="320" width="310" height="126" rx="4" fill="#76563b" stroke="#b38a5c" stroke-width="14"/>
-  <rect x="786" y="485" width="310" height="126" rx="4" fill="#76563b" stroke="#b38a5c" stroke-width="14"/>
-  <rect x="104" y="635" width="138" height="48" rx="3" fill="#8b6849" stroke="#5c4936" stroke-width="6"/>
+  <rect x="104" y="320" width="310" height="126" rx="7" fill="url(#soil)" stroke="#a78a68" stroke-width="8"/>
+  <rect x="104" y="485" width="310" height="126" rx="7" fill="url(#soil)" stroke="#a78a68" stroke-width="8"/>
+  <rect x="786" y="320" width="310" height="126" rx="7" fill="url(#soil)" stroke="#a78a68" stroke-width="8"/>
+  <rect x="786" y="485" width="310" height="126" rx="7" fill="url(#soil)" stroke="#a78a68" stroke-width="8"/>
+  <rect x="104" y="635" width="138" height="48" rx="6" fill="#8b745b" stroke="#6f604e" stroke-width="4"/>
 </svg>
